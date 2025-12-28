@@ -12,12 +12,15 @@ option(ALETHEIA_USE_WORD_POOL "Enable fixed-block word pool" ON)
 find_package(Eigen3 3.4 QUIET NO_MODULE)
 if(NOT Eigen3_FOUND)
   include(FetchContent)
+  set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+  set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
   FetchContent_Declare(
     eigen
     GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
     GIT_TAG 3.4.0
   )
   FetchContent_MakeAvailable(eigen)
+  set(BUILD_TESTING ON CACHE BOOL "" FORCE)
 endif()
 
 include(FetchContent)
