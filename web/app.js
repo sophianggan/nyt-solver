@@ -57,6 +57,7 @@ connWordsEl.value = sampleConnections;
 
 let Module = null;
 let connChart = null;
+let chartReady = false;
 
 const GROUP_COLORS = ["#fbbf24", "#22c55e", "#3b82f6", "#a855f7"];
 
@@ -65,14 +66,24 @@ function logLine(message) {
   logEl.textContent = `[${time}] ${message}\n` + logEl.textContent;
 }
 
-createModule().then((mod) => {
-  Module = mod;
-  statusEl.textContent = "WASM ready.";
-  initChart();
-});
+const wasmStart = performance.now();
+initChart();
+
+createModule()
+  .then((mod) => {
+    Module = mod;
+    const elapsed = ((performance.now() - wasmStart) / 1000).toFixed(2);
+    statusEl.textContent = `WASM ready (${elapsed}s).`;
+    initChart();
+  })
+  .catch((err) => {
+    statusEl.textContent = "WASM failed to load. Check console/network.";
+    logLine(`WASM load failed: ${err}`);
+  });
 
 function initChart() {
-  if (!chartEl) return;
+  if (chartReady || !chartEl || !window.Chart) return;
+  chartReady = true;
   connChart = new Chart(chartEl, {
     type: "scatter",
     data: {
