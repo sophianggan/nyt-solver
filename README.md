@@ -26,6 +26,10 @@ Connections (demo puzzle):
 ./build/aletheia --connections-interactive --connections-demo --allow-fallback
 ```
 
+## Live Demo
+
+WebAssembly demo: https://sophianggan.github.io/nyt-solver/
+
 ## WASM Demo
 
 Build the WebAssembly bundle (requires Emscripten):
