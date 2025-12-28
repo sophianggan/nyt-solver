@@ -4,25 +4,43 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Aletheia WASM Demo</title>
+    <link
+      rel="preconnect"
+      href="https://fonts.googleapis.com"
+    />
+    <link
+      rel="preconnect"
+      href="https://fonts.gstatic.com"
+      crossorigin
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Space+Grotesk:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
     <style>
       :root {
-        --bg: #0f172a;
+        --bg: #0b0f19;
         --panel: #111827;
-        --text: #e5e7eb;
-        --muted: #9ca3af;
-        --accent: #38bdf8;
+        --text: #f8fafc;
+        --muted: #94a3b8;
+        --accent: #f59e0b;
+        --accent-2: #22c55e;
+        --accent-3: #3b82f6;
       }
       body {
         margin: 0;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-          "Liberation Mono", "Courier New", monospace;
-        background: radial-gradient(circle at top, #1e293b, #0f172a 45%);
+        font-family: "Space Grotesk", sans-serif;
+        background: radial-gradient(circle at top, #1f2937 0%, #0b0f19 55%);
         color: var(--text);
         padding: 24px;
       }
       h1 {
         margin: 0 0 8px 0;
         font-size: 28px;
+      }
+      h2 {
+        margin: 0 0 12px 0;
+        font-size: 18px;
       }
       p {
         margin: 0 0 16px 0;
@@ -54,6 +72,7 @@
         background: #0b1220;
         color: var(--text);
         font-size: 13px;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
       }
       button {
         margin-top: 10px;
@@ -72,10 +91,44 @@
         border-radius: 8px;
         font-size: 13px;
         min-height: 24px;
+        white-space: pre-wrap;
       }
       .status {
         color: var(--muted);
         font-size: 12px;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+        align-items: center;
+      }
+      .pill {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: #0b1220;
+        border: 1px solid #1f2937;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .log {
+        max-height: 220px;
+        overflow: auto;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+      }
+      canvas {
+        background: #0b1220;
+        border-radius: 10px;
+        border: 1px solid #1f2937;
+      }
+      @media (max-width: 720px) {
+        body {
+          padding: 16px;
+        }
       }
     </style>
   </head>
@@ -87,9 +140,16 @@
     <div class="grid">
       <div class="card">
         <h2>Wordle</h2>
+        <div class="controls">
+          <label class="pill">
+            <input type="checkbox" id="wordleHard" />
+            Hard Mode
+          </label>
+        </div>
         <label for="dict">Dictionary (one word per line)</label>
         <textarea id="dict" rows="6"></textarea>
         <button id="loadDict">Load Dictionary</button>
+        <button id="resetWordle">Reset Session</button>
         <div class="output" id="dictStatus">Not loaded.</div>
 
         <label for="guess">Guess</label>
@@ -99,19 +159,37 @@
         <button id="patternBtn">Compute Pattern</button>
         <div class="output" id="patternOut"></div>
 
+        <label for="patternInput">Apply Pattern (e.g., 01220)</label>
+        <input id="patternInput" placeholder="01220" />
+        <button id="applyPatternBtn">Apply Feedback</button>
+
         <button id="bestGuessBtn">Best Guess</button>
         <div class="output" id="bestGuessOut"></div>
       </div>
 
       <div class="card">
         <h2>Connections</h2>
+        <div class="controls">
+          <label class="pill">
+            <input type="checkbox" id="connectionsHard" />
+            Hard Mode (Lexical Boost)
+          </label>
+        </div>
         <label for="connWords">16 words (space or line separated)</label>
         <textarea id="connWords" rows="8"></textarea>
         <button id="solveConn">Solve Groups</button>
         <div class="output" id="connOut"></div>
+        <label>Vector Space (PCA)</label>
+        <canvas id="connChart" height="240"></canvas>
+      </div>
+
+      <div class="card">
+        <h2>Solver Log</h2>
+        <div class="output log" id="log"></div>
       </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script type="module" src="./app.js"></script>
   </body>
 </html>

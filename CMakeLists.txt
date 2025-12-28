@@ -4,6 +4,7 @@ project(Aletheia LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+enable_testing()
 
 option(ALETHEIA_USE_HWY "Enable Highway SIMD" ON)
 option(ALETHEIA_USE_WORD_POOL "Enable fixed-block word pool" ON)
@@ -18,6 +19,16 @@ if(NOT Eigen3_FOUND)
   )
   FetchContent_MakeAvailable(eigen)
 endif()
+
+include(FetchContent)
+FetchContent_Declare(
+  googletest
+  GIT_REPOSITORY https://github.com/google/googletest.git
+  GIT_TAG v1.14.0
+)
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
+include(GoogleTest)
 
 if(ALETHEIA_USE_HWY)
   find_package(hwy QUIET)
@@ -59,7 +70,7 @@ endif()
 
 add_executable(wordle_tests tests/wordle_tests.cpp Wordle.cpp)
 target_include_directories(wordle_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(wordle_tests PRIVATE Eigen3::Eigen)
+target_link_libraries(wordle_tests PRIVATE Eigen3::Eigen GTest::gtest_main)
 if(TARGET hwy)
   target_link_libraries(wordle_tests PRIVATE hwy)
   target_compile_definitions(wordle_tests PRIVATE ALETHEIA_USE_HWY=1)
@@ -67,6 +78,8 @@ endif()
 if(ALETHEIA_USE_WORD_POOL)
   target_compile_definitions(wordle_tests PRIVATE ALETHEIA_USE_WORD_POOL=1)
 endif()
+
+gtest_discover_tests(wordle_tests)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   target_compile_options(wordle_tests PRIVATE -O3)

@@ -1,0 +1,158 @@
+%PDF-1.4
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+<< /Type /Pages /Kids [ 2 0 R 4 0 R ] /Count 2 >>
+endobj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+<< /Length 1914 >>
+stream
+BT
+/F1 12 Tf
+14 TL
+72 720 Td
+(Aletheia: Information-Theoretic Puzzle Optimization) Tj
+T*
+() Tj
+T*
+(Abstract) Tj
+T*
+() Tj
+T*
+(Aletheia is a high-performance solver for NYT Wordle and Connections. It pairs) Tj
+T*
+(Shannon entropy with SIMD acceleration and fixed-block memory pooling to) Tj
+T*
+(optimize guess selection, and uses PCA-based clustering to solve Connections.) Tj
+T*
+(This paper describes the mathematical framing and the engineering choices) Tj
+T*
+(behind the system.) Tj
+T*
+() Tj
+T*
+(Wordle as Information Theory) Tj
+T*
+() Tj
+T*
+(Each guess partitions the candidate set by feedback pattern. We treat the) Tj
+T*
+(feedback distribution as a probability mass function and maximize Shannon) Tj
+T*
+(entropy:) Tj
+T*
+() Tj
+T*
+(H = -\\sum_i p_i \\log_2\(p_i\)) Tj
+T*
+() Tj
+T*
+(For a specific pattern with probability `p`, the information gain is:) Tj
+T*
+() Tj
+T*
+(I = -\\log_2\(p\)) Tj
+T*
+() Tj
+T*
+(By selecting the guess with the highest expected entropy, Aletheia maximizes) Tj
+T*
+(expected information gain per turn.) Tj
+T*
+() Tj
+T*
+(SIMD + Memory Pooling) Tj
+T*
+() Tj
+T*
+(The solver performs millions of candidate checks. To reduce latency:) Tj
+T*
+() Tj
+T*
+(- SIMD prefilters \(Google Highway\) accelerate pattern checks.) Tj
+T*
+(- A fixed-block pool stores words in contiguous, aligned memory.) Tj
+T*
+(- Candidate buffers are reused between turns to avoid heap churn.) Tj
+T*
+() Tj
+T*
+(These changes minimize cache misses and allocation overhead in hot loops.) Tj
+T*
+() Tj
+T*
+(Connections via Semantic Clustering) Tj
+T*
+() Tj
+T*
+(Connections words are embedded as vectors, and cosine similarity builds the) Tj
+T*
+(adjacency matrix:) Tj
+T*
+() Tj
+T*
+(cos\(theta\) = \(a · b\) / \(||a|| * ||b||\)) Tj
+T*
+() Tj
+T*
+(PCA projects embeddings into 2D for visualization and red-herring analysis.) Tj
+T*
+(The solver searches 4-clique partitions that maximize total intra-group) Tj
+T*
+(similarity.) Tj
+T*
+() Tj
+T*
+ET
+endstream
+endobj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 1 0 R /Resources << /Font << /F1 4 0 R >> >> >> >>
+endobj
+<< /Length 539 >>
+stream
+BT
+/F1 12 Tf
+14 TL
+72 720 Td
+(Validation) Tj
+T*
+() Tj
+T*
+(The Python benchmarking suite evaluates win rate, average guesses, and P99) Tj
+T*
+(latency across official Wordle solutions. A/B runs compare baseline versus) Tj
+T*
+(optimized builds, documenting performance deltas in `BENCHMARKS.md`.) Tj
+T*
+() Tj
+T*
+(Conclusion) Tj
+T*
+() Tj
+T*
+(Aletheia demonstrates how mathematical objectives \(entropy maximization and) Tj
+T*
+(PCA clustering\) can be translated into production-grade C++ with careful) Tj
+T*
+(performance engineering.) Tj
+T*
+ET
+endstream
+endobj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 3 0 R /Resources << /Font << /F1 4 0 R >> >> >> >>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000050 00000 n 
+0000000107 00000 n 
+0000000169 00000 n 
+0000002128 00000 n 
+0000002249 00000 n 
+0000002831 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+2952
+%%EOF

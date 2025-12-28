@@ -163,6 +163,9 @@ class EmbeddingStore {
 class SimilarityEngine {
  public:
   void BuildMatrix(const std::vector<Eigen::VectorXd>& embeddings);
+  void BuildMatrixHybrid(const std::vector<Eigen::VectorXd>& embeddings,
+                         const std::vector<std::string>& words,
+                         double lexical_weight);
   const Eigen::MatrixXd& matrix() const { return similarity_; }
 
  private:

@@ -25,6 +25,7 @@ struct Config {
   bool wordle_interactive = false;
   bool wordle_adversarial = false;
   bool wordle_profile = false;
+  bool wordle_hard = false;
   std::string connections_words;
   std::string embeddings_path;
   std::string embeddings_format = "word2vec";
@@ -35,6 +36,8 @@ struct Config {
   bool connections_interactive = false;
   bool connections_demo = false;
   bool connections_shuffle = false;
+  bool connections_hard = false;
+  double connections_lexical_weight = 0.25;
 };
 
 void PrintUsage(const char* argv0) {
@@ -57,9 +60,12 @@ void PrintUsage(const char* argv0) {
       << "  --interactive              Interactive Wordle loop using feedback\n"
       << "  --adversarial              Absurdle-style mode (auto pattern, worst case)\n"
       << "  --profile                  Log allocation vs compute timing per turn\n"
+      << "  --wordle-hard              Enforce Wordle hard mode in interactive play\n"
       << "  --connections-words PATH   16 words for Connections (whitespace or line-separated)\n"
       << "  --connections-demo         Use the built-in demo puzzle + categories\n"
       << "  --connections-shuffle      Shuffle word order for display each run\n"
+      << "  --connections-hard         Boost lexical similarity for wordplay puzzles\n"
+      << "  --connections-lexical-weight N  Lexical weight (0-1, default 0.25)\n"
       << "  --embeddings PATH          Word2Vec binary or text embeddings file\n"
       << "  --embeddings-format FMT    word2vec (binary) or text (GloVe/fastText .vec)\n"
       << "  --connections-dot PATH     Write a Graphviz .dot visualization\n"
@@ -855,6 +861,8 @@ int main(int argc, char** argv) {
       config.wordle_adversarial = true;
     } else if (arg == "--profile") {
       config.wordle_profile = true;
+    } else if (arg == "--wordle-hard") {
+      config.wordle_hard = true;
     } else if (arg == "--connections-words" && i + 1 < argc) {
       config.connections_words = argv[++i];
     } else if (arg == "--embeddings" && i + 1 < argc) {
@@ -873,6 +881,10 @@ int main(int argc, char** argv) {
       config.connections_demo = true;
     } else if (arg == "--connections-shuffle") {
       config.connections_shuffle = true;
+    } else if (arg == "--connections-hard") {
+      config.connections_hard = true;
+    } else if (arg == "--connections-lexical-weight" && i + 1 < argc) {
+      config.connections_lexical_weight = std::stod(argv[++i]);
     } else if (arg == "--allow-fallback") {
       config.allow_fallback = true;
     } else if (arg == "--help" || arg == "-h") {
@@ -924,9 +936,12 @@ int main(int argc, char** argv) {
     if (config.wordle_interactive) {
       std::vector<size_t> remaining(wordle.words().size());
       std::iota(remaining.begin(), remaining.end(), 0);
+      std::vector<size_t> all_indices(wordle.words().size());
+      std::iota(all_indices.begin(), all_indices.end(), 0);
       const size_t initial_count = remaining.size();
       const bool adversarial = config.wordle_adversarial;
       const bool auto_pattern = has_target || adversarial;
+      const bool hard_mode = config.wordle_hard;
       size_t steps_taken = 0;
       std::vector<size_t> next;
       next.reserve(remaining.size());
@@ -936,6 +951,9 @@ int main(int argc, char** argv) {
         std::cout << "Adversarial mode enabled.\n";
       } else if (auto_pattern) {
         std::cout << "Auto feedback enabled.\n";
+      }
+      if (hard_mode) {
+        std::cout << "Hard mode enabled.\n";
       }
       std::cout << "Type '?' for help.\n";
       while (true) {
@@ -951,8 +969,10 @@ int main(int argc, char** argv) {
 
         double entropy = 0.0;
         auto start = std::chrono::high_resolution_clock::now();
+        const std::vector<size_t>& guess_pool =
+            hard_mode ? remaining : all_indices;
         std::string suggestion =
-            wordle.BestGuess(remaining, remaining, &entropy);
+            wordle.BestGuess(guess_pool, remaining, &entropy);
         auto end = std::chrono::high_resolution_clock::now();
         auto micros =
             std::chrono::duration_cast<std::chrono::microseconds>(end - start)
@@ -1038,6 +1058,19 @@ int main(int argc, char** argv) {
         if (!aletheia::WordleSolver::IsValidWord(guess)) {
           std::cout << "Invalid guess: " << guess_input << "\n";
           continue;
+        }
+        if (hard_mode) {
+          bool allowed = false;
+          for (size_t idx : remaining) {
+            if (wordle.words()[idx].text == guess) {
+              allowed = true;
+              break;
+            }
+          }
+          if (!allowed) {
+            std::cout << "Hard mode: guess must match all revealed hints.\n";
+            continue;
+          }
         }
 
         aletheia::PackedWord guess_packed =
@@ -1259,7 +1292,12 @@ int main(int argc, char** argv) {
     }
 
     aletheia::SimilarityEngine similarity;
-    similarity.BuildMatrix(vectors);
+    if (config.connections_hard) {
+      similarity.BuildMatrixHybrid(vectors, words,
+                                   config.connections_lexical_weight);
+    } else {
+      similarity.BuildMatrix(vectors);
+    }
 
     int pca_dims = config.connections_pca_dims;
     if (pca_dims <= 0) {

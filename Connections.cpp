@@ -20,6 +20,52 @@ std::string ToLowerAscii(const std::string& input) {
   }
   return out;
 }
+
+double LexicalSimilarity(const std::string& left, const std::string& right) {
+  if (left.empty() || right.empty()) {
+    return 0.0;
+  }
+  if (left == right) {
+    return 1.0;
+  }
+  const size_t len_a = left.size();
+  const size_t len_b = right.size();
+  const size_t min_len = std::min(len_a, len_b);
+  const size_t max_len = std::max(len_a, len_b);
+
+  size_t prefix = 0;
+  while (prefix < min_len && left[prefix] == right[prefix]) {
+    ++prefix;
+  }
+
+  size_t suffix = 0;
+  while (suffix < min_len &&
+         left[len_a - 1 - suffix] == right[len_b - 1 - suffix]) {
+    ++suffix;
+  }
+
+  double score = 0.0;
+  score += 0.45 * (static_cast<double>(prefix) / max_len);
+  score += 0.45 * (static_cast<double>(suffix) / max_len);
+  if (len_a == len_b) {
+    score += 0.05;
+  }
+
+  if (len_a == len_b && len_a > 1) {
+    std::string sorted_a = left;
+    std::string sorted_b = right;
+    std::sort(sorted_a.begin(), sorted_a.end());
+    std::sort(sorted_b.begin(), sorted_b.end());
+    if (sorted_a == sorted_b) {
+      score += 0.25;
+    }
+  }
+
+  if (score > 1.0) {
+    score = 1.0;
+  }
+  return score;
+}
 }  // namespace
 
 bool EmbeddingStore::LoadWord2VecBinary(
@@ -155,6 +201,31 @@ void SimilarityEngine::BuildMatrix(
         similarity_(i, j) =
             embeddings[i].dot(embeddings[j]) / (norm_i * norm_j);
       }
+    }
+  }
+}
+
+void SimilarityEngine::BuildMatrixHybrid(
+    const std::vector<Eigen::VectorXd>& embeddings,
+    const std::vector<std::string>& words,
+    double lexical_weight) {
+  if (embeddings.size() != words.size() || embeddings.empty()) {
+    BuildMatrix(embeddings);
+    return;
+  }
+  double weight = std::max(0.0, std::min(1.0, lexical_weight));
+  const int n = static_cast<int>(embeddings.size());
+  similarity_.resize(n, n);
+  for (int i = 0; i < n; ++i) {
+    const double norm_i = embeddings[i].norm();
+    for (int j = 0; j < n; ++j) {
+      const double norm_j = embeddings[j].norm();
+      double cosine = 0.0;
+      if (norm_i != 0.0 && norm_j != 0.0) {
+        cosine = embeddings[i].dot(embeddings[j]) / (norm_i * norm_j);
+      }
+      double lexical = LexicalSimilarity(words[i], words[j]);
+      similarity_(i, j) = (1.0 - weight) * cosine + weight * lexical;
     }
   }
 }

@@ -24,6 +24,13 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.57
+      - name: Prepare deps
+        run: cmake -S . -B build
+      - name: Build WASM
+        run: ./scripts/build_wasm.sh
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

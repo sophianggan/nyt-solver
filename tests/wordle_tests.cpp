@@ -1,21 +1,8 @@
 #include "Solver.hpp"
 
-#include <iostream>
+#include <gtest/gtest.h>
 
 namespace {
-int g_failures = 0;
-
-void ExpectTrue(bool condition, const char* message) {
-  if (!condition) {
-    std::cerr << "FAIL: " << message << "\n";
-    ++g_failures;
-  }
-}
-
-void ExpectFalse(bool condition, const char* message) {
-  ExpectTrue(!condition, message);
-}
-
 std::string PatternFor(const std::string& guess, const std::string& target) {
   aletheia::PackedWord guess_packed = aletheia::WordleSolver::EncodeWord(guess);
   aletheia::PackedWord target_packed =
@@ -25,40 +12,42 @@ std::string PatternFor(const std::string& guess, const std::string& target) {
 }
 }  // namespace
 
-int main() {
-  {
-    std::string guess = "abbey";
-    std::string target = "babes";
-    std::string pattern = PatternFor(guess, target);
-    ExpectTrue(aletheia::WordleSolver::IsConsistent(target, guess, pattern),
-               "duplicate letters should be consistent");
-    ExpectFalse(aletheia::WordleSolver::IsConsistent("abbey", guess, pattern),
-                "yellow letters cannot be in the same position");
-  }
+TEST(WordleConsistency, DuplicateLetterRule) {
+  std::string guess = "abbey";
+  std::string target = "babes";
+  std::string pattern = PatternFor(guess, target);
+  EXPECT_TRUE(aletheia::WordleSolver::IsConsistent(target, guess, pattern));
+  EXPECT_FALSE(aletheia::WordleSolver::IsConsistent("abbey", guess, pattern));
+}
 
-  {
-    std::string guess = "cigar";
-    std::string target = "cigar";
-    std::string pattern = PatternFor(guess, target);
-    ExpectTrue(aletheia::WordleSolver::IsConsistent(target, guess, pattern),
-               "perfect match should be consistent");
-    ExpectFalse(aletheia::WordleSolver::IsConsistent(
-                    target, guess, "22220"),
-                "mismatched pattern should be inconsistent");
-  }
+TEST(WordleConsistency, PerfectMatch) {
+  std::string guess = "cigar";
+  std::string target = "cigar";
+  std::string pattern = PatternFor(guess, target);
+  EXPECT_TRUE(aletheia::WordleSolver::IsConsistent(target, guess, pattern));
+  EXPECT_FALSE(
+      aletheia::WordleSolver::IsConsistent(target, guess, "22220"));
+}
 
-  {
-    std::string guess = "mamma";
-    std::string target = "gamma";
-    std::string pattern = PatternFor(guess, target);
-    ExpectTrue(aletheia::WordleSolver::IsConsistent(target, guess, pattern),
-               "repeated letters should follow Wordle rules");
-  }
+TEST(WordleConsistency, RepeatedLetters) {
+  std::string guess = "mamma";
+  std::string target = "gamma";
+  std::string pattern = PatternFor(guess, target);
+  EXPECT_TRUE(aletheia::WordleSolver::IsConsistent(target, guess, pattern));
+}
 
-  if (g_failures > 0) {
-    std::cerr << g_failures << " test(s) failed.\n";
-    return 1;
-  }
-  std::cout << "All tests passed.\n";
-  return 0;
+TEST(WordleConsistency, GrayConsumesDuplicates) {
+  std::string guess = "sassy";
+  std::string target = "assay";
+  std::string pattern = PatternFor(guess, target);
+  EXPECT_TRUE(aletheia::WordleSolver::IsConsistent(target, guess, pattern));
+  EXPECT_FALSE(aletheia::WordleSolver::IsConsistent("sassy", guess, pattern));
+}
+
+TEST(WordleConsistency, YellowPositionInvalid) {
+  std::string guess = "stare";
+  std::string target = "crate";
+  std::string pattern = PatternFor(guess, target);
+  EXPECT_TRUE(aletheia::WordleSolver::IsConsistent(target, guess, pattern));
+  EXPECT_FALSE(aletheia::WordleSolver::IsConsistent("stare", guess, pattern));
 }

@@ -44,3 +44,4 @@ Then open `web/index.html` in a local server (or deploy `web/` to GitHub Pages).
 
 - `THEORY.md` for Shannon Entropy + Cosine Similarity + PCA notes.
 - `BENCHMARKS.md` for benchmark methodology and results.
+- `WHITEPAPER.md` and `whitepaper.pdf` for the technical write-up.

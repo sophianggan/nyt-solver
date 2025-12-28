@@ -92,3 +92,13 @@ cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=RelWithDebInfo \
 cmake --build build-asan
 ctest --test-dir build-asan --output-on-failure
 ```
+
+## FlameGraph Profiling
+
+On Linux, capture a flamegraph of the solver hot paths:
+
+```
+./scripts/profile_flamegraph.sh ./build/aletheia --wordle-dict wordle.txt --interactive
+```
+
+This writes `reports/flamegraph.svg`.
