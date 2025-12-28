@@ -8,8 +8,11 @@ const targetEl = document.getElementById("target");
 const patternOut = document.getElementById("patternOut");
 const patternInputEl = document.getElementById("patternInput");
 const bestGuessOut = document.getElementById("bestGuessOut");
+const speedCountEl = document.getElementById("speedCount");
+const speedOutEl = document.getElementById("speedOut");
 const connWordsEl = document.getElementById("connWords");
 const connOut = document.getElementById("connOut");
+const connMeta = document.getElementById("connMeta");
 const logEl = document.getElementById("log");
 const wordleHardEl = document.getElementById("wordleHard");
 const connectionsHardEl = document.getElementById("connectionsHard");
@@ -88,7 +91,8 @@ function initChart() {
         legend: { labels: { color: "#94a3b8" } },
         tooltip: {
           callbacks: {
-            label: (ctx) => `${ctx.raw.label} (${ctx.raw.x.toFixed(2)}, ${ctx.raw.y.toFixed(2)})`,
+            label: (ctx) =>
+              `${ctx.raw.label} (conf ${ctx.raw.confidence?.toFixed(2) ?? "0.00"}, margin ${ctx.raw.margin?.toFixed(2) ?? "0.00"})`,
           },
         },
       },
@@ -175,8 +179,17 @@ document.getElementById("solveConn").addEventListener("click", () => {
       return `Group ${i + 1}: ${group.join(", ")}`;
     });
     connOut.textContent = lines.join("\n");
+    const avgConfidence = payload.group_confidence
+      ? (payload.group_confidence.reduce((a, b) => a + b, 0) /
+          payload.group_confidence.length)
+      : 0;
+    connMeta.textContent = `Avg confidence: ${avgConfidence.toFixed(
+      3
+    )} | Lexical boost: ${payload.lexical_boosted ? "yes" : "no"}`;
     logLine(
-      `Connections solved (${hardMode ? "hard" : "normal"}). PCA points rendered.`
+      `Connections solved (${hardMode ? "hard" : "normal"}). Avg confidence ${avgConfidence.toFixed(
+        3
+      )}.`
     );
     if (payload.points && connChart) {
       renderPoints(payload.points);
@@ -188,16 +201,100 @@ document.getElementById("solveConn").addEventListener("click", () => {
 
 function renderPoints(points) {
   const grouped = [[], [], [], []];
+  const randomOffset = () => (Math.random() - 0.5) * 4;
+  const seeded = points.map((point) => ({
+    ...point,
+    x: point.x + randomOffset(),
+    y: point.y + randomOffset(),
+  }));
+  connChart.data.datasets.forEach((dataset, idx) => {
+    dataset.data = seeded.filter((p) => (p.group ?? 0) === idx).map((p) => ({
+      x: p.x,
+      y: p.y,
+      label: p.word,
+      margin: p.margin ?? 0,
+      confidence: p.confidence ?? 0,
+    }));
+    dataset.pointRadius = dataset.data.map(() => 4);
+    dataset.pointBorderWidth = dataset.data.map(() => 0);
+  });
+  connChart.update();
+  const margins = points.map((point) => point.margin ?? 0);
+  const sortedMargins = [...margins].sort((a, b) => a - b);
+  const cutoff = sortedMargins[Math.min(2, sortedMargins.length - 1)];
   for (const point of points) {
     const group = point.group >= 0 && point.group < 4 ? point.group : 0;
     grouped[group].push({
       x: point.x,
       y: point.y,
       label: point.word,
+      margin: point.margin ?? 0,
+      confidence: point.confidence ?? 0,
     });
   }
   grouped.forEach((data, idx) => {
     connChart.data.datasets[idx].data = data;
+    connChart.data.datasets[idx].pointRadius = data.map((pt) =>
+      pt.margin <= cutoff ? 7 : 4
+    );
+    connChart.data.datasets[idx].pointBorderColor = data.map((pt) =>
+      pt.margin <= cutoff ? "#f87171" : "transparent"
+    );
+    connChart.data.datasets[idx].pointBorderWidth = data.map((pt) =>
+      pt.margin <= cutoff ? 2 : 0
+    );
   });
-  connChart.update();
+  setTimeout(() => {
+    connChart.update();
+  }, 120);
 }
+
+document.getElementById("speedTestBtn").addEventListener("click", async () => {
+  if (!Module) return;
+  const count = Math.max(1, Math.min(500, Number(speedCountEl.value) || 100));
+  const words = dictEl.value
+    .split(/\s+/)
+    .map((w) => w.trim().toLowerCase())
+    .filter((w) => w.length === 5);
+  if (words.length === 0) {
+    speedOutEl.textContent = "Load a dictionary first.";
+    return;
+  }
+  const hardMode = Boolean(wordleHardEl.checked);
+  logLine(`Speed test started (${count} games, ${hardMode ? "hard" : "normal"}).`);
+  const latencies = [];
+  let wins = 0;
+  for (let i = 0; i < count; i++) {
+    const target = words[Math.floor(Math.random() * words.length)];
+    Module.wordleReset();
+    const start = performance.now();
+    let solved = false;
+    for (let step = 0; step < 6; step++) {
+      const result = Module.wordleBestGuess(hardMode);
+      if (!result) break;
+      const [guess] = result.split("|");
+      const pattern = Module.wordlePattern(guess, target);
+      if (!pattern) break;
+      Module.wordleApplyFeedback(guess, pattern);
+      if (pattern === "22222") {
+        solved = true;
+        break;
+      }
+    }
+    const elapsed = performance.now() - start;
+    latencies.push(elapsed);
+    if (solved) wins += 1;
+    if ((i + 1) % 20 === 0) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  }
+  latencies.sort((a, b) => a - b);
+  const p = (pct) =>
+    latencies[Math.min(latencies.length - 1, Math.floor((pct / 100) * latencies.length))] || 0;
+  const p50 = p(50).toFixed(2);
+  const p90 = p(90).toFixed(2);
+  const p99 = p(99).toFixed(2);
+  const winRate = ((wins / count) * 100).toFixed(1);
+  speedOutEl.textContent = `Win rate: ${winRate}% | P50: ${p50}ms | P90: ${p90}ms | P99: ${p99}ms`;
+  logLine(`Speed test done. Win rate ${winRate}%, P99 ${p99}ms.`);
+});

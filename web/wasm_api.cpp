@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <limits>
 #include <numeric>
 #include <sstream>
 #include <string>
@@ -229,13 +231,97 @@ std::string ConnectionsSolveDetailed(const std::string& words_text,
   }
 
   aletheia::SimilarityEngine similarity;
-  if (hard_mode) {
-    similarity.BuildMatrixHybrid(vectors, words, 0.35);
-  } else {
-    similarity.BuildMatrix(vectors);
+  double lexical_weight = hard_mode ? 0.25 : 0.0;
+  bool lexical_boosted = false;
+  auto build_matrix = [&](double weight) {
+    if (weight > 0.0) {
+      similarity.BuildMatrixHybrid(vectors, words, weight);
+    } else {
+      similarity.BuildMatrix(vectors);
+    }
+  };
+  build_matrix(lexical_weight);
+
+  auto solve_groups = [&]() {
+    aletheia::ConnectionsSolver solver(similarity.matrix());
+    return solver.SolveBestPartition();
+  };
+
+  std::vector<uint16_t> groups = solve_groups();
+
+  auto build_group_indices = [&](const std::vector<uint16_t>& masks) {
+    std::vector<std::vector<int>> indices;
+    indices.reserve(masks.size());
+    for (size_t g = 0; g < masks.size(); ++g) {
+      std::vector<int> group;
+      for (size_t i = 0; i < words.size(); ++i) {
+        if (masks[g] & (1U << i)) {
+          group.push_back(static_cast<int>(i));
+        }
+      }
+      indices.push_back(std::move(group));
+    }
+    return indices;
+  };
+
+  auto cluster_confidence = [&](const std::vector<int>& indices) {
+    if (indices.size() < 2) {
+      return 0.0;
+    }
+    const int n = static_cast<int>(indices.size());
+    const int dims = static_cast<int>(vectors[indices[0]].size());
+    Eigen::MatrixXd X(n, dims);
+    for (int i = 0; i < n; ++i) {
+      X.row(i) = vectors[indices[i]].transpose();
+    }
+    Eigen::VectorXd mean = X.colwise().mean();
+    Eigen::MatrixXd centered = X.rowwise() - mean.transpose();
+    Eigen::MatrixXd cov =
+        (centered.transpose() * centered) / std::max(1, n - 1);
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> solver(cov);
+    if (solver.info() != Eigen::Success) {
+      return 0.0;
+    }
+    Eigen::VectorXd evals = solver.eigenvalues();
+    double sum = evals.sum();
+    if (sum <= 0.0) {
+      return 0.0;
+    }
+    double max_eval = evals.maxCoeff();
+    return max_eval / sum;
+  };
+
+  std::vector<std::vector<int>> group_indices = build_group_indices(groups);
+  std::vector<double> group_confidence;
+  group_confidence.reserve(group_indices.size());
+  double avg_confidence = 0.0;
+  for (const auto& indices : group_indices) {
+    double conf = cluster_confidence(indices);
+    group_confidence.push_back(conf);
+    avg_confidence += conf;
   }
-  aletheia::ConnectionsSolver solver(similarity.matrix());
-  std::vector<uint16_t> groups = solver.SolveBestPartition();
+  if (!group_confidence.empty()) {
+    avg_confidence /= static_cast<double>(group_confidence.size());
+  }
+
+  if (hard_mode && avg_confidence < 0.25 && lexical_weight < 0.5) {
+    lexical_weight = 0.5;
+    lexical_boosted = true;
+    build_matrix(lexical_weight);
+    groups = solve_groups();
+    group_indices = build_group_indices(groups);
+    group_confidence.clear();
+    avg_confidence = 0.0;
+    for (const auto& indices : group_indices) {
+      double conf = cluster_confidence(indices);
+      group_confidence.push_back(conf);
+      avg_confidence += conf;
+    }
+    if (!group_confidence.empty()) {
+      avg_confidence /= static_cast<double>(group_confidence.size());
+    }
+  }
+
   PcaResult pca = ComputePcaProjection(vectors, 2);
 
   std::vector<int> group_of(words.size(), -1);
@@ -266,21 +352,73 @@ std::string ConnectionsSolveDetailed(const std::string& words_text,
     }
     out << "]";
   }
-  out << "],\"points\":[";
+  out << "],\"group_confidence\":[";
+  for (size_t i = 0; i < group_confidence.size(); ++i) {
+    if (i > 0) {
+      out << ",";
+    }
+    out << group_confidence[i];
+  }
+  out << "],\"lexical_boosted\":" << (lexical_boosted ? "true" : "false");
+  out << ",\"points\":[";
+
+  std::vector<Eigen::Vector2d> centroids(group_indices.size(),
+                                         Eigen::Vector2d::Zero());
+  if (pca.projected.rows() == static_cast<int>(words.size()) &&
+      pca.projected.cols() >= 2) {
+    for (size_t g = 0; g < group_indices.size(); ++g) {
+      if (group_indices[g].empty()) {
+        continue;
+      }
+      Eigen::Vector2d sum(0.0, 0.0);
+      for (int idx : group_indices[g]) {
+        sum[0] += pca.projected(idx, 0);
+        sum[1] += pca.projected(idx, 1);
+      }
+      centroids[g] = sum / static_cast<double>(group_indices[g].size());
+    }
+  }
+
   for (size_t i = 0; i < words.size(); ++i) {
     if (i > 0) {
       out << ",";
     }
     double x = 0.0;
     double y = 0.0;
+    double margin = 0.0;
     if (pca.projected.rows() == static_cast<int>(words.size()) &&
         pca.projected.cols() >= 2) {
       x = pca.projected(static_cast<int>(i), 0);
       y = pca.projected(static_cast<int>(i), 1);
+      if (!centroids.empty()) {
+        int own = group_of[i];
+        double best = std::numeric_limits<double>::infinity();
+        double second = std::numeric_limits<double>::infinity();
+        for (size_t g = 0; g < centroids.size(); ++g) {
+          double dx = x - centroids[g][0];
+          double dy = y - centroids[g][1];
+          double dist = std::sqrt(dx * dx + dy * dy);
+          if (static_cast<int>(g) == own) {
+            best = dist;
+          } else if (dist < second) {
+            second = dist;
+          }
+        }
+        if (std::isfinite(best) && std::isfinite(second)) {
+          margin = second - best;
+        }
+      }
+    }
+    double confidence = 0.0;
+    if (group_of[i] >= 0 &&
+        static_cast<size_t>(group_of[i]) < group_confidence.size()) {
+      confidence = group_confidence[group_of[i]];
     }
     out << "{\"word\":\"" << JsonEscape(words[i]) << "\""
         << ",\"x\":" << x << ",\"y\":" << y
-        << ",\"group\":" << group_of[i] << "}";
+        << ",\"group\":" << group_of[i]
+        << ",\"margin\":" << margin
+        << ",\"confidence\":" << confidence << "}";
   }
   out << "]}";
   return out.str();
