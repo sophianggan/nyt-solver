@@ -1,0 +1,13 @@
+/.DS_Store
+/.vscode
+/build/
+/build-*/
+/CMakeFiles/
+/CMakeCache.txt
+/cmake_install.cmake
+/Makefile
+/reports/
+/data/wordle_solutions.txt
+*.o
+*.a
+*.d

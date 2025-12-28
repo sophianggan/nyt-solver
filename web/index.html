@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Aletheia WASM Demo</title>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --panel: #111827;
+        --text: #e5e7eb;
+        --muted: #9ca3af;
+        --accent: #38bdf8;
+      }
+      body {
+        margin: 0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+        background: radial-gradient(circle at top, #1e293b, #0f172a 45%);
+        color: var(--text);
+        padding: 24px;
+      }
+      h1 {
+        margin: 0 0 8px 0;
+        font-size: 28px;
+      }
+      p {
+        margin: 0 0 16px 0;
+        color: var(--muted);
+      }
+      .grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      }
+      .card {
+        background: var(--panel);
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+      }
+      label {
+        display: block;
+        margin: 8px 0 4px 0;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      textarea,
+      input {
+        width: 100%;
+        padding: 8px;
+        border-radius: 8px;
+        border: 1px solid #1f2937;
+        background: #0b1220;
+        color: var(--text);
+        font-size: 13px;
+      }
+      button {
+        margin-top: 10px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: none;
+        background: var(--accent);
+        color: #0b1220;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .output {
+        margin-top: 8px;
+        padding: 8px;
+        background: #0b1220;
+        border-radius: 8px;
+        font-size: 13px;
+        min-height: 24px;
+      }
+      .status {
+        color: var(--muted);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Aletheia WASM Demo</h1>
+    <p>Wordle + Connections helpers running in your browser.</p>
+    <div class="status" id="status">Loading WASM...</div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Wordle</h2>
+        <label for="dict">Dictionary (one word per line)</label>
+        <textarea id="dict" rows="6"></textarea>
+        <button id="loadDict">Load Dictionary</button>
+        <div class="output" id="dictStatus">Not loaded.</div>
+
+        <label for="guess">Guess</label>
+        <input id="guess" placeholder="raise" />
+        <label for="target">Target</label>
+        <input id="target" placeholder="crate" />
+        <button id="patternBtn">Compute Pattern</button>
+        <div class="output" id="patternOut"></div>
+
+        <button id="bestGuessBtn">Best Guess</button>
+        <div class="output" id="bestGuessOut"></div>
+      </div>
+
+      <div class="card">
+        <h2>Connections</h2>
+        <label for="connWords">16 words (space or line separated)</label>
+        <textarea id="connWords" rows="8"></textarea>
+        <button id="solveConn">Solve Groups</button>
+        <div class="output" id="connOut"></div>
+      </div>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
