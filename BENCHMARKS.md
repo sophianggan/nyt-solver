@@ -53,6 +53,13 @@ Run the baseline build without SIMD/pooling and compare to optimized:
 | Win rate | 96.7% | 96.7% |
 | Average guesses | 3.79 | 3.79 |
 
+Notes:
+
+- Baseline uses `-DALETHEIA_USE_HWY=0 -DALETHEIA_USE_WORD_POOL=0`.
+- Optimized enables both SIMD and the fixed-block pool.
+- For stable latency claims, run with a larger `--count` and compare
+  distributions (P50/P90/P99) on the same machine.
+
 Reports:
 
 - `reports/wordle_benchmark_baseline.json`

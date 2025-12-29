@@ -8,8 +8,11 @@ const targetEl = document.getElementById("target");
 const patternOut = document.getElementById("patternOut");
 const patternInputEl = document.getElementById("patternInput");
 const bestGuessOut = document.getElementById("bestGuessOut");
+const entropyBarsEl = document.getElementById("entropyBars");
 const speedCountEl = document.getElementById("speedCount");
 const speedOutEl = document.getElementById("speedOut");
+const stressCountEl = document.getElementById("stressCount");
+const stressOutEl = document.getElementById("stressOut");
 const connWordsEl = document.getElementById("connWords");
 const connOut = document.getElementById("connOut");
 const connMeta = document.getElementById("connMeta");
@@ -66,6 +69,63 @@ function logLine(message) {
   logEl.textContent = `[${time}] ${message}\n` + logEl.textContent;
 }
 
+function renderEntropyBars(items) {
+  entropyBarsEl.textContent = "";
+  if (!items || items.length === 0) {
+    return;
+  }
+  const maxEntropy = Math.max(...items.map((item) => item.entropy || 0), 0.01);
+  items.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "bar-row";
+    const label = document.createElement("div");
+    label.className = "bar-label";
+    label.textContent = item.word.toUpperCase();
+    const track = document.createElement("div");
+    track.className = "bar-track";
+    const fill = document.createElement("div");
+    fill.className = "bar-fill";
+    fill.style.width = `${Math.max(
+      8,
+      (item.entropy / maxEntropy) * 100
+    )}%`;
+    track.appendChild(fill);
+    const value = document.createElement("div");
+    value.textContent = `${item.entropy.toFixed(2)}b`;
+    row.appendChild(label);
+    row.appendChild(track);
+    row.appendChild(value);
+    entropyBarsEl.appendChild(row);
+  });
+}
+
+function refreshEntropyBars() {
+  if (!Module || !Module.wordleTopGuesses) {
+    return;
+  }
+  const hardMode = Boolean(wordleHardEl.checked);
+  const result = Module.wordleTopGuesses(5, hardMode);
+  if (!result) {
+    return;
+  }
+  try {
+    const payload = JSON.parse(result);
+    if (Array.isArray(payload.items)) {
+      renderEntropyBars(payload.items);
+    }
+  } catch (err) {
+    logLine("Entropy data parse failed.");
+  }
+}
+
+window.addEventListener("error", (event) => {
+  logLine(`JS error: ${event.message || event.type}`);
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  logLine(`Promise rejection: ${event.reason || "unknown"}`);
+});
+
 const wasmStart = performance.now();
 initChart();
 
@@ -75,11 +135,16 @@ createModule()
     const elapsed = ((performance.now() - wasmStart) / 1000).toFixed(2);
     statusEl.textContent = `WASM ready (${elapsed}s).`;
     initChart();
+    refreshEntropyBars();
   })
   .catch((err) => {
     statusEl.textContent = "WASM failed to load. Check console/network.";
     logLine(`WASM load failed: ${err}`);
   });
+
+wordleHardEl.addEventListener("change", () => {
+  refreshEntropyBars();
+});
 
 function initChart() {
   if (chartReady || !chartEl || !window.Chart) return;
@@ -97,13 +162,25 @@ function initChart() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      animation: { duration: 800, easing: "easeOutQuart" },
+      animation: false,
+      parsing: false,
       plugins: {
         legend: { labels: { color: "#94a3b8" } },
         tooltip: {
           callbacks: {
-            label: (ctx) =>
-              `${ctx.raw.label} (conf ${ctx.raw.confidence?.toFixed(2) ?? "0.00"}, margin ${ctx.raw.margin?.toFixed(2) ?? "0.00"})`,
+            label: (ctx) => {
+              if (!ctx.raw) return "";
+              const confidence =
+                ctx.raw.confidence != null ? Number(ctx.raw.confidence) : 0;
+              const margin = ctx.raw.margin != null ? Number(ctx.raw.margin) : 0;
+              const centroid =
+                ctx.raw.centroidDist != null
+                  ? Number(ctx.raw.centroidDist)
+                  : 0;
+              return `${ctx.raw.label} (conf ${confidence.toFixed(
+                2
+              )}, dist ${centroid.toFixed(2)}, margin ${margin.toFixed(2)})`;
+            },
           },
         },
       },
@@ -122,6 +199,7 @@ document.getElementById("loadDict").addEventListener("click", () => {
   const remaining = Module.wordleRemainingCount();
   logLine(`Wordle dictionary loaded (${remaining} words).`);
   dictStatusEl.textContent = "Dictionary loaded.";
+  refreshEntropyBars();
 });
 
 document.getElementById("resetWordle").addEventListener("click", () => {
@@ -129,6 +207,7 @@ document.getElementById("resetWordle").addEventListener("click", () => {
   Module.wordleReset();
   logLine("Wordle session reset.");
   dictStatusEl.textContent = "Session reset.";
+  entropyBarsEl.textContent = "";
 });
 
 document.getElementById("patternBtn").addEventListener("click", () => {
@@ -153,6 +232,7 @@ document.getElementById("applyPatternBtn").addEventListener("click", () => {
     return;
   }
   logLine(`Applied feedback: ${guess.toUpperCase()} ${pattern}, remaining ${remaining}.`);
+  refreshEntropyBars();
 });
 
 document.getElementById("bestGuessBtn").addEventListener("click", () => {
@@ -173,6 +253,7 @@ document.getElementById("bestGuessBtn").addEventListener("click", () => {
       entropy
     ).toFixed(4)}, remaining ${remaining}`
   );
+  refreshEntropyBars();
 });
 
 document.getElementById("solveConn").addEventListener("click", () => {
@@ -211,25 +292,11 @@ document.getElementById("solveConn").addEventListener("click", () => {
 });
 
 function renderPoints(points) {
+  if (!connChart) {
+    logLine("Chart not ready.");
+    return;
+  }
   const grouped = [[], [], [], []];
-  const randomOffset = () => (Math.random() - 0.5) * 4;
-  const seeded = points.map((point) => ({
-    ...point,
-    x: point.x + randomOffset(),
-    y: point.y + randomOffset(),
-  }));
-  connChart.data.datasets.forEach((dataset, idx) => {
-    dataset.data = seeded.filter((p) => (p.group ?? 0) === idx).map((p) => ({
-      x: p.x,
-      y: p.y,
-      label: p.word,
-      margin: p.margin ?? 0,
-      confidence: p.confidence ?? 0,
-    }));
-    dataset.pointRadius = dataset.data.map(() => 4);
-    dataset.pointBorderWidth = dataset.data.map(() => 0);
-  });
-  connChart.update();
   const margins = points.map((point) => point.margin ?? 0);
   const sortedMargins = [...margins].sort((a, b) => a - b);
   const cutoff = sortedMargins[Math.min(2, sortedMargins.length - 1)];
@@ -240,6 +307,7 @@ function renderPoints(points) {
       y: point.y,
       label: point.word,
       margin: point.margin ?? 0,
+      centroidDist: point.centroid_dist ?? 0,
       confidence: point.confidence ?? 0,
     });
   }
@@ -255,9 +323,7 @@ function renderPoints(points) {
       pt.margin <= cutoff ? 2 : 0
     );
   });
-  setTimeout(() => {
-    connChart.update();
-  }, 120);
+  connChart.update();
 }
 
 document.getElementById("speedTestBtn").addEventListener("click", async () => {
@@ -308,4 +374,37 @@ document.getElementById("speedTestBtn").addEventListener("click", async () => {
   const winRate = ((wins / count) * 100).toFixed(1);
   speedOutEl.textContent = `Win rate: ${winRate}% | P50: ${p50}ms | P90: ${p90}ms | P99: ${p99}ms`;
   logLine(`Speed test done. Win rate ${winRate}%, P99 ${p99}ms.`);
+});
+
+document.getElementById("stressTestBtn").addEventListener("click", () => {
+  if (!Module || !Module.wordleAdversarialStress) {
+    stressOutEl.textContent = "WASM update required.";
+    return;
+  }
+  const count = Math.max(1, Math.min(200, Number(stressCountEl.value) || 25));
+  const hardMode = Boolean(wordleHardEl.checked);
+  const result = Module.wordleAdversarialStress(count, hardMode);
+  if (!result) {
+    stressOutEl.textContent = "Stress test failed.";
+    return;
+  }
+  try {
+    const payload = JSON.parse(result);
+    if (payload.error) {
+      stressOutEl.textContent = payload.error;
+      return;
+    }
+    stressOutEl.textContent = `Worst step: ${payload.worst_ms.toFixed(
+      2
+    )}ms | Avg step: ${payload.avg_ms.toFixed(2)}ms | Steps: ${
+      payload.steps
+    }`;
+    logLine(
+      `Adversarial stress: worst ${payload.worst_ms.toFixed(
+        2
+      )}ms, avg ${payload.avg_ms.toFixed(2)}ms.`
+    );
+  } catch (err) {
+    stressOutEl.textContent = "Stress test parse failed.";
+  }
 });

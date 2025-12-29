@@ -93,6 +93,45 @@
         min-height: 24px;
         white-space: pre-wrap;
       }
+      .entropy-bars {
+        display: grid;
+        gap: 6px;
+        margin-top: 10px;
+      }
+      .bar-row {
+        display: grid;
+        grid-template-columns: 60px 1fr 56px;
+        gap: 8px;
+        align-items: center;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .bar-label {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        color: var(--text);
+      }
+      .bar-track {
+        height: 6px;
+        border-radius: 999px;
+        background: #1f2937;
+        overflow: hidden;
+      }
+      .bar-fill {
+        height: 100%;
+        background: var(--accent-3);
+      }
+      details {
+        margin-top: 10px;
+        padding: 6px 10px;
+        border-radius: 10px;
+        border: 1px solid #1f2937;
+        background: #0b1220;
+      }
+      summary {
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 12px;
+      }
       .status {
         color: var(--muted);
         font-size: 12px;
@@ -152,24 +191,33 @@
         <button id="resetWordle">Reset Session</button>
         <div class="output" id="dictStatus">Not loaded.</div>
 
-        <label for="guess">Guess</label>
-        <input id="guess" placeholder="raise" />
-        <label for="target">Target</label>
-        <input id="target" placeholder="crate" />
-        <button id="patternBtn">Compute Pattern</button>
-        <div class="output" id="patternOut"></div>
-
-        <label for="patternInput">Apply Pattern (e.g., 01220)</label>
-        <input id="patternInput" placeholder="01220" />
-        <button id="applyPatternBtn">Apply Feedback</button>
-
         <button id="bestGuessBtn">Best Guess</button>
         <div class="output" id="bestGuessOut"></div>
+        <div class="entropy-bars" id="entropyBars"></div>
 
-        <label for="speedCount">Speed test games</label>
-        <input id="speedCount" type="number" min="1" max="500" value="100" />
-        <button id="speedTestBtn">Run Speed Test</button>
-        <div class="output" id="speedOut"></div>
+        <details>
+          <summary>Analysis tools</summary>
+          <label for="guess">Guess</label>
+          <input id="guess" placeholder="raise" />
+          <label for="target">Target</label>
+          <input id="target" placeholder="crate" />
+          <button id="patternBtn">Compute Pattern</button>
+          <div class="output" id="patternOut"></div>
+
+          <label for="patternInput">Apply Pattern (e.g., 01220)</label>
+          <input id="patternInput" placeholder="01220" />
+          <button id="applyPatternBtn">Apply Feedback</button>
+
+          <label for="speedCount">Speed test games</label>
+          <input id="speedCount" type="number" min="1" max="500" value="50" />
+          <button id="speedTestBtn">Run Speed Test</button>
+          <div class="output" id="speedOut"></div>
+
+          <label for="stressCount">Adversarial games</label>
+          <input id="stressCount" type="number" min="1" max="200" value="25" />
+          <button id="stressTestBtn">Run Stress Test</button>
+          <div class="output" id="stressOut"></div>
+        </details>
       </div>
 
       <div class="card">

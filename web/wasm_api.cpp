@@ -1,7 +1,9 @@
 #include "Solver.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <numeric>
@@ -15,6 +17,7 @@ namespace {
 aletheia::WordleSolver g_wordle;
 bool g_loaded = false;
 std::vector<size_t> g_remaining;
+constexpr int kPatternCount = 243;
 
 std::string ToLowerAscii(std::string input) {
   for (char& c : input) {
@@ -71,6 +74,32 @@ bool IsPatternValid(const std::string& pattern) {
     }
   }
   return true;
+}
+
+double EntropyForGuessIndex(size_t guess_index,
+                            const std::vector<size_t>& targets) {
+  if (targets.empty()) {
+    return 0.0;
+  }
+  std::array<int, kPatternCount> counts{};
+  counts.fill(0);
+  const auto& words = g_wordle.words();
+  const aletheia::PackedWord& guess = words[guess_index].packed;
+  for (size_t target_index : targets) {
+    const aletheia::PackedWord& target = words[target_index].packed;
+    int pattern = aletheia::WordleSolver::Pattern(guess, target);
+    counts[pattern]++;
+  }
+  double entropy = 0.0;
+  const double inv_total = 1.0 / static_cast<double>(targets.size());
+  for (int count : counts) {
+    if (count == 0) {
+      continue;
+    }
+    double p = count * inv_total;
+    entropy -= p * std::log2(p);
+  }
+  return entropy;
 }
 
 struct PcaResult {
@@ -193,6 +222,134 @@ std::string WordleBestGuess(bool hard_mode) {
   std::string guess = g_wordle.BestGuess(candidates, targets, &entropy);
   std::ostringstream out;
   out << guess << "|" << entropy;
+  return out.str();
+}
+
+std::string WordleTopGuesses(int limit, bool hard_mode) {
+  if (!g_loaded) {
+    return "";
+  }
+  if (limit <= 0) {
+    limit = 5;
+  }
+  std::vector<size_t> all_indices(g_wordle.words().size());
+  std::iota(all_indices.begin(), all_indices.end(), 0);
+  const std::vector<size_t>& targets =
+      g_remaining.empty() ? all_indices : g_remaining;
+  const std::vector<size_t>& candidates =
+      hard_mode ? targets : all_indices;
+
+  struct ScoredGuess {
+    size_t index = 0;
+    double entropy = 0.0;
+  };
+  std::vector<ScoredGuess> scored;
+  scored.reserve(candidates.size());
+  for (size_t guess_index : candidates) {
+    scored.push_back({guess_index, EntropyForGuessIndex(guess_index, targets)});
+  }
+  size_t take = std::min<size_t>(static_cast<size_t>(limit), scored.size());
+  std::partial_sort(
+      scored.begin(), scored.begin() + take, scored.end(),
+      [](const ScoredGuess& a, const ScoredGuess& b) {
+        return a.entropy > b.entropy;
+      });
+
+  std::ostringstream out;
+  out << "{\"items\":[";
+  const auto& words = g_wordle.words();
+  for (size_t i = 0; i < take; ++i) {
+    if (i > 0) {
+      out << ",";
+    }
+    out << "{\"word\":\"" << JsonEscape(std::string(words[scored[i].index].text))
+        << "\",\"entropy\":" << scored[i].entropy << "}";
+  }
+  out << "]}";
+  return out.str();
+}
+
+std::string WordleAdversarialStress(int games, bool hard_mode) {
+  if (!g_loaded) {
+    return "{\"error\":\"Dictionary not loaded\"}";
+  }
+  if (games <= 0) {
+    games = 10;
+  }
+  std::vector<size_t> all_indices(g_wordle.words().size());
+  std::iota(all_indices.begin(), all_indices.end(), 0);
+  const auto& words = g_wordle.words();
+
+  double worst_ms = 0.0;
+  double total_ms = 0.0;
+  int total_steps = 0;
+
+  for (int game = 0; game < games; ++game) {
+    std::vector<size_t> remaining = all_indices;
+    for (int step = 0; step < 6; ++step) {
+      const std::vector<size_t>& targets =
+          remaining.empty() ? all_indices : remaining;
+      const std::vector<size_t>& candidates =
+          hard_mode ? targets : all_indices;
+      if (targets.empty() || candidates.empty()) {
+        break;
+      }
+      auto start = std::chrono::high_resolution_clock::now();
+      size_t best_index = candidates[0];
+      double best_entropy = -std::numeric_limits<double>::infinity();
+      for (size_t guess_index : candidates) {
+        double entropy = EntropyForGuessIndex(guess_index, targets);
+        if (entropy > best_entropy) {
+          best_entropy = entropy;
+          best_index = guess_index;
+        }
+      }
+
+      std::array<int, kPatternCount> counts{};
+      counts.fill(0);
+      const aletheia::PackedWord& guess = words[best_index].packed;
+      for (size_t target_index : targets) {
+        const aletheia::PackedWord& target = words[target_index].packed;
+        int pattern = aletheia::WordleSolver::Pattern(guess, target);
+        counts[pattern]++;
+      }
+      int worst_pattern = 0;
+      int worst_count = -1;
+      for (int i = 0; i < kPatternCount; ++i) {
+        if (counts[i] > worst_count) {
+          worst_count = counts[i];
+          worst_pattern = i;
+        }
+      }
+      std::string pattern_str =
+          aletheia::WordleSolver::PatternString(worst_pattern);
+      std::vector<size_t> next;
+      next.reserve(remaining.size());
+      aletheia::WordleSolver::FilterCandidates(
+          words, remaining, words[best_index].text, pattern_str, &next);
+      auto end = std::chrono::high_resolution_clock::now();
+
+      double elapsed =
+          std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(
+              end - start)
+              .count();
+      total_ms += elapsed;
+      total_steps += 1;
+      if (elapsed > worst_ms) {
+        worst_ms = elapsed;
+      }
+      remaining.swap(next);
+      if (pattern_str == "22222" || remaining.size() <= 1) {
+        break;
+      }
+    }
+  }
+
+  double avg_ms = total_steps > 0 ? total_ms / total_steps : 0.0;
+  std::ostringstream out;
+  out << "{\"worst_ms\":" << worst_ms
+      << ",\"avg_ms\":" << avg_ms
+      << ",\"steps\":" << total_steps << "}";
   return out.str();
 }
 
@@ -386,6 +543,7 @@ std::string ConnectionsSolveDetailed(const std::string& words_text,
     double x = 0.0;
     double y = 0.0;
     double margin = 0.0;
+    double centroid_dist = 0.0;
     if (pca.projected.rows() == static_cast<int>(words.size()) &&
         pca.projected.cols() >= 2) {
       x = pca.projected(static_cast<int>(i), 0);
@@ -406,6 +564,7 @@ std::string ConnectionsSolveDetailed(const std::string& words_text,
         }
         if (std::isfinite(best) && std::isfinite(second)) {
           margin = second - best;
+          centroid_dist = best;
         }
       }
     }
@@ -418,6 +577,7 @@ std::string ConnectionsSolveDetailed(const std::string& words_text,
         << ",\"x\":" << x << ",\"y\":" << y
         << ",\"group\":" << group_of[i]
         << ",\"margin\":" << margin
+        << ",\"centroid_dist\":" << centroid_dist
         << ",\"confidence\":" << confidence << "}";
   }
   out << "]}";
@@ -431,6 +591,8 @@ EMSCRIPTEN_BINDINGS(aletheia_wasm) {
   emscripten::function("wordleIsCandidate", &WordleIsCandidate);
   emscripten::function("wordleApplyFeedback", &WordleApplyFeedback);
   emscripten::function("wordleBestGuess", &WordleBestGuess);
+  emscripten::function("wordleTopGuesses", &WordleTopGuesses);
+  emscripten::function("wordleAdversarialStress", &WordleAdversarialStress);
   emscripten::function("wordlePattern", &WordlePattern);
   emscripten::function("connectionsSolve", &ConnectionsSolve);
   emscripten::function("connectionsSolveDetailed", &ConnectionsSolveDetailed);

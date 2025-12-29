@@ -23,6 +23,20 @@ In practice, `p` is estimated as:
 p = (remaining_after) / (remaining_before)
 ```
 
+### Why entropy is the right objective (sketch)
+
+For a guess `g`, each feedback pattern `p` partitions the candidate set
+into a bucket of size `|S_p|`. The expected information gain is:
+
+```
+E[I(g)] = \sum_p \frac{|S_p|}{|S|} \log_2 \frac{|S|}{|S_p|}
+```
+
+This is exactly the Shannon entropy of the feedback distribution. So
+choosing the guess that maximizes entropy maximizes the expected reduction
+in uncertainty (expected bits gained), which aligns with minimizing the
+expected number of remaining candidates.
+
 ## Cosine Similarity (Connections)
 
 Given embedding vectors `a` and `b`, cosine similarity is:
