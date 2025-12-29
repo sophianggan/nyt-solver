@@ -120,10 +120,13 @@
         overflow: auto;
         font-family: "IBM Plex Mono", ui-monospace, monospace;
       }
-      canvas {
+      #connChart {
+        width: 100%;
+        height: 240px;
         background: #0b1220;
         border-radius: 10px;
         border: 1px solid #1f2937;
+        display: block;
       }
       @media (max-width: 720px) {
         body {
@@ -185,7 +188,7 @@
         <button id="solveConn">Solve Groups</button>
         <div class="output" id="connOut"></div>
         <label>Vector Space (PCA)</label>
-        <canvas id="connChart" height="240"></canvas>
+        <svg id="connChart" viewBox="0 0 400 240" role="img" aria-label="PCA scatter plot"></svg>
         <div class="output" id="connMeta"></div>
       </div>
 
@@ -195,7 +198,6 @@
       </div>
     </div>
 
-    <script src="./vendor/chart.umd.min.js"></script>
     <script type="module" src="./app.js"></script>
   </body>
 </html>
