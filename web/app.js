@@ -66,6 +66,14 @@ function logLine(message) {
   logEl.textContent = `[${time}] ${message}\n` + logEl.textContent;
 }
 
+window.addEventListener("error", (event) => {
+  logLine(`JS error: ${event.message || event.type}`);
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  logLine(`Promise rejection: ${event.reason || "unknown"}`);
+});
+
 const wasmStart = performance.now();
 initChart();
 
@@ -82,7 +90,11 @@ createModule()
   });
 
 function initChart() {
-  if (chartReady || !chartEl || !window.Chart) return;
+  if (chartReady || !chartEl) return;
+  if (!window.Chart) {
+    logLine("Chart.js not loaded yet.");
+    return;
+  }
   chartReady = true;
   connChart = new Chart(chartEl, {
     type: "scatter",
@@ -97,13 +109,21 @@ function initChart() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      animation: { duration: 800, easing: "easeOutQuart" },
+      animation: false,
+      parsing: false,
       plugins: {
         legend: { labels: { color: "#94a3b8" } },
         tooltip: {
           callbacks: {
-            label: (ctx) =>
-              `${ctx.raw.label} (conf ${ctx.raw.confidence?.toFixed(2) ?? "0.00"}, margin ${ctx.raw.margin?.toFixed(2) ?? "0.00"})`,
+            label: (ctx) => {
+              if (!ctx.raw) return "";
+              const confidence =
+                ctx.raw.confidence != null ? Number(ctx.raw.confidence) : 0;
+              const margin = ctx.raw.margin != null ? Number(ctx.raw.margin) : 0;
+              return `${ctx.raw.label} (conf ${confidence.toFixed(
+                2
+              )}, margin ${margin.toFixed(2)})`;
+            },
           },
         },
       },
@@ -211,29 +231,24 @@ document.getElementById("solveConn").addEventListener("click", () => {
 });
 
 function renderPoints(points) {
+  if (!connChart) {
+    logLine("Chart not initialized.");
+    return;
+  }
+  const safePoints = points.filter(
+    (point) => Number.isFinite(point.x) && Number.isFinite(point.y)
+  );
+  if (safePoints.length === 0) {
+    logLine("PCA points missing or invalid.");
+    return;
+  }
   const grouped = [[], [], [], []];
-  const randomOffset = () => (Math.random() - 0.5) * 4;
-  const seeded = points.map((point) => ({
-    ...point,
-    x: point.x + randomOffset(),
-    y: point.y + randomOffset(),
-  }));
-  connChart.data.datasets.forEach((dataset, idx) => {
-    dataset.data = seeded.filter((p) => (p.group ?? 0) === idx).map((p) => ({
-      x: p.x,
-      y: p.y,
-      label: p.word,
-      margin: p.margin ?? 0,
-      confidence: p.confidence ?? 0,
-    }));
-    dataset.pointRadius = dataset.data.map(() => 4);
-    dataset.pointBorderWidth = dataset.data.map(() => 0);
-  });
-  connChart.update();
-  const margins = points.map((point) => point.margin ?? 0);
+  const margins = safePoints.map((point) =>
+    Number.isFinite(point.margin) ? point.margin : 0
+  );
   const sortedMargins = [...margins].sort((a, b) => a - b);
   const cutoff = sortedMargins[Math.min(2, sortedMargins.length - 1)];
-  for (const point of points) {
+  for (const point of safePoints) {
     const group = point.group >= 0 && point.group < 4 ? point.group : 0;
     grouped[group].push({
       x: point.x,
@@ -255,9 +270,7 @@ function renderPoints(points) {
       pt.margin <= cutoff ? 2 : 0
     );
   });
-  setTimeout(() => {
-    connChart.update();
-  }, 120);
+  connChart.update();
 }
 
 document.getElementById("speedTestBtn").addEventListener("click", async () => {
