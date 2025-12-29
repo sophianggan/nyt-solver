@@ -159,7 +159,8 @@
         overflow: auto;
         font-family: "IBM Plex Mono", ui-monospace, monospace;
       }
-      canvas {
+      #connChart {
+        height: 160px;
         background: #0b1220;
         border-radius: 10px;
         border: 1px solid #1f2937;
@@ -233,7 +234,7 @@
         <button id="solveConn">Solve Groups</button>
         <div class="output" id="connOut"></div>
         <label>Vector Space (PCA)</label>
-        <canvas id="connChart" height="240"></canvas>
+        <canvas id="connChart" height="160"></canvas>
         <div class="output" id="connMeta"></div>
       </div>
 

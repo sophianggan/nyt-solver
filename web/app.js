@@ -165,7 +165,7 @@ function initChart() {
       animation: false,
       parsing: false,
       plugins: {
-        legend: { labels: { color: "#94a3b8" } },
+        legend: { display: false },
         tooltip: {
           callbacks: {
             label: (ctx) => {
@@ -184,10 +184,8 @@ function initChart() {
           },
         },
       },
-      scales: {
-        x: { ticks: { color: "#94a3b8" }, grid: { color: "#1f2937" } },
-        y: { ticks: { color: "#94a3b8" }, grid: { color: "#1f2937" } },
-      },
+      elements: { point: { radius: 3, hoverRadius: 5 } },
+      scales: { x: { display: false }, y: { display: false } },
     },
   });
 }
@@ -232,7 +230,6 @@ document.getElementById("applyPatternBtn").addEventListener("click", () => {
     return;
   }
   logLine(`Applied feedback: ${guess.toUpperCase()} ${pattern}, remaining ${remaining}.`);
-  refreshEntropyBars();
 });
 
 document.getElementById("bestGuessBtn").addEventListener("click", () => {
@@ -314,13 +311,13 @@ function renderPoints(points) {
   grouped.forEach((data, idx) => {
     connChart.data.datasets[idx].data = data;
     connChart.data.datasets[idx].pointRadius = data.map((pt) =>
-      pt.margin <= cutoff ? 7 : 4
+      pt.margin <= cutoff ? 5 : 3
     );
     connChart.data.datasets[idx].pointBorderColor = data.map((pt) =>
       pt.margin <= cutoff ? "#f87171" : "transparent"
     );
     connChart.data.datasets[idx].pointBorderWidth = data.map((pt) =>
-      pt.margin <= cutoff ? 2 : 0
+      pt.margin <= cutoff ? 1 : 0
     );
   });
   connChart.update();

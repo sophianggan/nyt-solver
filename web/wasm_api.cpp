@@ -239,14 +239,33 @@ std::string WordleTopGuesses(int limit, bool hard_mode) {
   const std::vector<size_t>& candidates =
       hard_mode ? targets : all_indices;
 
+  auto sample_indices = [](const std::vector<size_t>& input, size_t max_count) {
+    if (input.size() <= max_count) {
+      return input;
+    }
+    std::vector<size_t> sampled;
+    sampled.reserve(max_count);
+    size_t step = (input.size() + max_count - 1) / max_count;
+    for (size_t i = 0; i < input.size() && sampled.size() < max_count; i += step) {
+      sampled.push_back(input[i]);
+    }
+    return sampled;
+  };
+
+  const size_t max_candidates = 900;
+  const size_t max_targets = 900;
+  std::vector<size_t> sampled_candidates = sample_indices(candidates, max_candidates);
+  std::vector<size_t> sampled_targets = sample_indices(targets, max_targets);
+
   struct ScoredGuess {
     size_t index = 0;
     double entropy = 0.0;
   };
   std::vector<ScoredGuess> scored;
-  scored.reserve(candidates.size());
-  for (size_t guess_index : candidates) {
-    scored.push_back({guess_index, EntropyForGuessIndex(guess_index, targets)});
+  scored.reserve(sampled_candidates.size());
+  for (size_t guess_index : sampled_candidates) {
+    scored.push_back(
+        {guess_index, EntropyForGuessIndex(guess_index, sampled_targets)});
   }
   size_t take = std::min<size_t>(static_cast<size_t>(limit), scored.size());
   std::partial_sort(
