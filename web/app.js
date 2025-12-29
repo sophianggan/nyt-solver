@@ -56,12 +56,10 @@ dictEl.value = sampleDict;
 connWordsEl.value = sampleConnections;
 
 let Module = null;
+let connChart = null;
 let chartReady = false;
 
 const GROUP_COLORS = ["#fbbf24", "#22c55e", "#3b82f6", "#a855f7"];
-const CHART_WIDTH = 400;
-const CHART_HEIGHT = 240;
-const CHART_PADDING = 28;
 
 function logLine(message) {
   const time = new Date().toLocaleTimeString();
@@ -84,6 +82,7 @@ createModule()
     Module = mod;
     const elapsed = ((performance.now() - wasmStart) / 1000).toFixed(2);
     statusEl.textContent = `WASM ready (${elapsed}s).`;
+    initChart();
   })
   .catch((err) => {
     statusEl.textContent = "WASM failed to load. Check console/network.";
@@ -92,10 +91,48 @@ createModule()
 
 function initChart() {
   if (chartReady || !chartEl) return;
+  if (!window.Chart) {
+    logLine("Chart.js not loaded yet.");
+    return;
+  }
   chartReady = true;
-  chartEl.setAttribute("viewBox", `0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`);
-  chartEl.setAttribute("preserveAspectRatio", "xMidYMid meet");
-  drawChartFrame();
+  connChart = new Chart(chartEl, {
+    type: "scatter",
+    data: {
+      datasets: [
+        { label: "Group 1", data: [], backgroundColor: GROUP_COLORS[0] },
+        { label: "Group 2", data: [], backgroundColor: GROUP_COLORS[1] },
+        { label: "Group 3", data: [], backgroundColor: GROUP_COLORS[2] },
+        { label: "Group 4", data: [], backgroundColor: GROUP_COLORS[3] },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      parsing: false,
+      plugins: {
+        legend: { labels: { color: "#94a3b8" } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              if (!ctx.raw) return "";
+              const confidence =
+                ctx.raw.confidence != null ? Number(ctx.raw.confidence) : 0;
+              const margin = ctx.raw.margin != null ? Number(ctx.raw.margin) : 0;
+              return `${ctx.raw.label} (conf ${confidence.toFixed(
+                2
+              )}, margin ${margin.toFixed(2)})`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: { ticks: { color: "#94a3b8" }, grid: { color: "#1f2937" } },
+        y: { ticks: { color: "#94a3b8" }, grid: { color: "#1f2937" } },
+      },
+    },
+  });
 }
 
 document.getElementById("loadDict").addEventListener("click", () => {
@@ -135,9 +172,7 @@ document.getElementById("applyPatternBtn").addEventListener("click", () => {
     logLine("Invalid Wordle feedback.");
     return;
   }
-  logLine(
-    `Applied feedback: ${guess.toUpperCase()} ${pattern}, remaining ${remaining}.`
-  );
+  logLine(`Applied feedback: ${guess.toUpperCase()} ${pattern}, remaining ${remaining}.`);
 });
 
 document.getElementById("bestGuessBtn").addEventListener("click", () => {
@@ -176,8 +211,8 @@ document.getElementById("solveConn").addEventListener("click", () => {
     });
     connOut.textContent = lines.join("\n");
     const avgConfidence = payload.group_confidence
-      ? payload.group_confidence.reduce((a, b) => a + b, 0) /
-        payload.group_confidence.length
+      ? (payload.group_confidence.reduce((a, b) => a + b, 0) /
+          payload.group_confidence.length)
       : 0;
     connMeta.textContent = `Avg confidence: ${avgConfidence.toFixed(
       3
@@ -187,7 +222,7 @@ document.getElementById("solveConn").addEventListener("click", () => {
         3
       )}.`
     );
-    if (payload.points && chartReady) {
+    if (payload.points && connChart) {
       renderPoints(payload.points);
     }
   } catch (err) {
@@ -196,7 +231,7 @@ document.getElementById("solveConn").addEventListener("click", () => {
 });
 
 function renderPoints(points) {
-  if (!chartEl || !chartReady) {
+  if (!connChart) {
     logLine("Chart not initialized.");
     return;
   }
@@ -207,89 +242,35 @@ function renderPoints(points) {
     logLine("PCA points missing or invalid.");
     return;
   }
+  const grouped = [[], [], [], []];
   const margins = safePoints.map((point) =>
     Number.isFinite(point.margin) ? point.margin : 0
   );
   const sortedMargins = [...margins].sort((a, b) => a - b);
   const cutoff = sortedMargins[Math.min(2, sortedMargins.length - 1)];
-
-  const xs = safePoints.map((point) => point.x);
-  const ys = safePoints.map((point) => point.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const scaleX = (x) => {
-    const denom = maxX - minX || 1;
-    return (
-      CHART_PADDING +
-      ((x - minX) / denom) * (CHART_WIDTH - CHART_PADDING * 2)
-    );
-  };
-  const scaleY = (y) => {
-    const denom = maxY - minY || 1;
-    return (
-      CHART_HEIGHT -
-      CHART_PADDING -
-      ((y - minY) / denom) * (CHART_HEIGHT - CHART_PADDING * 2)
-    );
-  };
-
-  clearSvg();
-  drawChartFrame();
-
-  safePoints.forEach((point) => {
+  for (const point of safePoints) {
     const group = point.group >= 0 && point.group < 4 ? point.group : 0;
-    const isHerring = (point.margin ?? 0) <= cutoff;
-    const cx = scaleX(point.x);
-    const cy = scaleY(point.y);
-    const circle = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "circle"
-    );
-    circle.setAttribute("cx", cx.toFixed(2));
-    circle.setAttribute("cy", cy.toFixed(2));
-    circle.setAttribute("r", isHerring ? "6" : "4");
-    circle.setAttribute("fill", GROUP_COLORS[group]);
-    circle.setAttribute("stroke", isHerring ? "#f87171" : "transparent");
-    circle.setAttribute("stroke-width", isHerring ? "2" : "0");
-    const title = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "title"
-    );
-    const confidence =
-      point.confidence != null ? Number(point.confidence) : 0;
-    const margin = point.margin != null ? Number(point.margin) : 0;
-    title.textContent = `${point.word} (conf ${confidence.toFixed(
-      2
-    )}, margin ${margin.toFixed(2)})`;
-    circle.appendChild(title);
-    chartEl.appendChild(circle);
-  });
-}
-
-function clearSvg() {
-  while (chartEl.firstChild) {
-    chartEl.removeChild(chartEl.firstChild);
+    grouped[group].push({
+      x: point.x,
+      y: point.y,
+      label: point.word,
+      margin: point.margin ?? 0,
+      confidence: point.confidence ?? 0,
+    });
   }
-}
-
-function drawChartFrame() {
-  const axis = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-  axis.setAttribute("x", CHART_PADDING.toString());
-  axis.setAttribute("y", CHART_PADDING.toString());
-  axis.setAttribute(
-    "width",
-    (CHART_WIDTH - CHART_PADDING * 2).toString()
-  );
-  axis.setAttribute(
-    "height",
-    (CHART_HEIGHT - CHART_PADDING * 2).toString()
-  );
-  axis.setAttribute("fill", "none");
-  axis.setAttribute("stroke", "#1f2937");
-  axis.setAttribute("stroke-width", "1");
-  chartEl.appendChild(axis);
+  grouped.forEach((data, idx) => {
+    connChart.data.datasets[idx].data = data;
+    connChart.data.datasets[idx].pointRadius = data.map((pt) =>
+      pt.margin <= cutoff ? 7 : 4
+    );
+    connChart.data.datasets[idx].pointBorderColor = data.map((pt) =>
+      pt.margin <= cutoff ? "#f87171" : "transparent"
+    );
+    connChart.data.datasets[idx].pointBorderWidth = data.map((pt) =>
+      pt.margin <= cutoff ? 2 : 0
+    );
+  });
+  connChart.update();
 }
 
 document.getElementById("speedTestBtn").addEventListener("click", async () => {
@@ -333,9 +314,7 @@ document.getElementById("speedTestBtn").addEventListener("click", async () => {
   }
   latencies.sort((a, b) => a - b);
   const p = (pct) =>
-    latencies[
-      Math.min(latencies.length - 1, Math.floor((pct / 100) * latencies.length))
-    ] || 0;
+    latencies[Math.min(latencies.length - 1, Math.floor((pct / 100) * latencies.length))] || 0;
   const p50 = p(50).toFixed(2);
   const p90 = p(90).toFixed(2);
   const p99 = p(99).toFixed(2);
