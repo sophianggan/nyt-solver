@@ -252,8 +252,8 @@ std::string WordleTopGuesses(int limit, bool hard_mode) {
     return sampled;
   };
 
-  const size_t max_candidates = 900;
-  const size_t max_targets = 900;
+  const size_t max_candidates = 300;
+  const size_t max_targets = 300;
   std::vector<size_t> sampled_candidates = sample_indices(candidates, max_candidates);
   std::vector<size_t> sampled_targets = sample_indices(targets, max_targets);
 

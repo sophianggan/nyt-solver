@@ -1,5 +1,3 @@
-import createModule from "./aletheia_wasm.js";
-
 const statusEl = document.getElementById("status");
 const dictEl = document.getElementById("dict");
 const dictStatusEl = document.getElementById("dictStatus");
@@ -129,22 +127,32 @@ window.addEventListener("unhandledrejection", (event) => {
 const wasmStart = performance.now();
 initChart();
 
-createModule()
+const useThreads = window.crossOriginIsolated;
+const wasmPath = useThreads
+  ? "./aletheia_wasm_mt.js"
+  : "./aletheia_wasm.js";
+
+if (!window.crossOriginIsolated && "serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./coi-serviceworker.js").catch(() => {});
+}
+
+statusEl.textContent = `Loading WASM (${useThreads ? "multi-core" : "single-core"})...`;
+
+import(wasmPath)
+  .then((mod) => mod.default())
   .then((mod) => {
     Module = mod;
     const elapsed = ((performance.now() - wasmStart) / 1000).toFixed(2);
-    statusEl.textContent = `WASM ready (${elapsed}s).`;
-    initChart();
-    refreshEntropyBars();
+    const modeLabel = useThreads ? "multi-core" : "single-core";
+    statusEl.textContent = `WASM ready (${elapsed}s, ${modeLabel}).`;
+    if (!useThreads) {
+      logLine("Reload once to enable multi-core WASM.");
+    }
   })
   .catch((err) => {
     statusEl.textContent = "WASM failed to load. Check console/network.";
     logLine(`WASM load failed: ${err}`);
   });
-
-wordleHardEl.addEventListener("change", () => {
-  refreshEntropyBars();
-});
 
 function initChart() {
   if (chartReady || !chartEl || !window.Chart) return;
@@ -197,7 +205,6 @@ document.getElementById("loadDict").addEventListener("click", () => {
   const remaining = Module.wordleRemainingCount();
   logLine(`Wordle dictionary loaded (${remaining} words).`);
   dictStatusEl.textContent = "Dictionary loaded.";
-  refreshEntropyBars();
 });
 
 document.getElementById("resetWordle").addEventListener("click", () => {
@@ -293,11 +300,15 @@ function renderPoints(points) {
     logLine("Chart not ready.");
     return;
   }
+  const safePoints = points.filter(
+    (point) => Number.isFinite(point.x) && Number.isFinite(point.y)
+  );
+  if (safePoints.length === 0) {
+    logLine("PCA points missing or invalid.");
+    return;
+  }
   const grouped = [[], [], [], []];
-  const margins = points.map((point) => point.margin ?? 0);
-  const sortedMargins = [...margins].sort((a, b) => a - b);
-  const cutoff = sortedMargins[Math.min(2, sortedMargins.length - 1)];
-  for (const point of points) {
+  for (const point of safePoints) {
     const group = point.group >= 0 && point.group < 4 ? point.group : 0;
     grouped[group].push({
       x: point.x,
@@ -310,15 +321,9 @@ function renderPoints(points) {
   }
   grouped.forEach((data, idx) => {
     connChart.data.datasets[idx].data = data;
-    connChart.data.datasets[idx].pointRadius = data.map((pt) =>
-      pt.margin <= cutoff ? 5 : 3
-    );
-    connChart.data.datasets[idx].pointBorderColor = data.map((pt) =>
-      pt.margin <= cutoff ? "#f87171" : "transparent"
-    );
-    connChart.data.datasets[idx].pointBorderWidth = data.map((pt) =>
-      pt.margin <= cutoff ? 1 : 0
-    );
+    connChart.data.datasets[idx].pointRadius = data.map(() => 3);
+    connChart.data.datasets[idx].pointBorderColor = data.map(() => "transparent");
+    connChart.data.datasets[idx].pointBorderWidth = data.map(() => 0);
   });
   connChart.update();
 }

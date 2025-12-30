@@ -16,13 +16,13 @@ fi
 
 mkdir -p "$OUT_DIR"
 
+COMMON_FLAGS="-O3 -flto -std=c++20 -msimd128"
+COMMON_FLAGS="$COMMON_FLAGS -s WASM=1"
+COMMON_FLAGS="$COMMON_FLAGS -s MODULARIZE=1 -s EXPORT_ES6=1"
+COMMON_FLAGS="$COMMON_FLAGS -s ENVIRONMENT=web"
+
 "$EMCC" \
-  -O3 \
-  -std=c++20 \
-  -s WASM=1 \
-  -s MODULARIZE=1 \
-  -s EXPORT_ES6=1 \
-  -s ENVIRONMENT=web \
+  $COMMON_FLAGS \
   -s ALLOW_MEMORY_GROWTH=1 \
   --bind \
   -I. \
@@ -32,4 +32,19 @@ mkdir -p "$OUT_DIR"
   Connections.cpp \
   -o "$OUT_DIR/aletheia_wasm.js"
 
-echo "WASM build complete: $OUT_DIR/aletheia_wasm.js"
+"$EMCC" \
+  $COMMON_FLAGS \
+  -s USE_PTHREADS=1 \
+  -s PTHREAD_POOL_SIZE=4 \
+  -s INITIAL_MEMORY=268435456 \
+  -s ALLOW_MEMORY_GROWTH=0 \
+  -pthread \
+  --bind \
+  -I. \
+  -Ibuild/_deps/eigen-src \
+  web/wasm_api.cpp \
+  Wordle.cpp \
+  Connections.cpp \
+  -o "$OUT_DIR/aletheia_wasm_mt.js"
+
+echo "WASM build complete: $OUT_DIR/aletheia_wasm.js + $OUT_DIR/aletheia_wasm_mt.js"
