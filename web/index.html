@@ -17,6 +17,7 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Space+Grotesk:wght@400;600&display=swap"
       rel="stylesheet"
     />
+    <link rel="stylesheet" href="./vendor/katex.min.css" />
     <style>
       :root {
         --bg: #0b0f19;
@@ -27,72 +28,214 @@
         --accent-2: #22c55e;
         --accent-3: #3b82f6;
       }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+      }
       body {
         margin: 0;
         font-family: "Space Grotesk", sans-serif;
         background: radial-gradient(circle at top, #1f2937 0%, #0b0f19 55%);
         color: var(--text);
-        padding: 24px;
+        padding: 12px;
+        overflow: auto;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        gap: 10px;
+      }
+      .page-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .page-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .status-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+      .thread-meter {
+        display: flex;
+        gap: 3px;
+        align-items: center;
+      }
+      .thread-bar {
+        width: 10px;
+        height: 10px;
+        border-radius: 2px;
+        background: #1f2937;
+        border: 1px solid #0b1220;
+      }
+      .thread-bar.active {
+        background: #22c55e;
+      }
+      .status-pill {
+        padding: 4px 8px;
+        border-radius: 999px;
+        border: 1px solid #1f2937;
+        background: #0b1220;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .status-pill.on {
+        color: #86efac;
+        border-color: #14532d;
+      }
+      .status-pill.off {
+        color: #fca5a5;
+        border-color: #7f1d1d;
       }
       h1 {
-        margin: 0 0 8px 0;
-        font-size: 28px;
+        margin: 0;
+        font-size: 24px;
       }
       h2 {
         margin: 0 0 12px 0;
-        font-size: 18px;
+        font-size: 16px;
       }
       p {
-        margin: 0 0 16px 0;
+        margin: 0;
         color: var(--muted);
       }
       .grid {
         display: grid;
-        gap: 16px;
-        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 12px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         align-items: start;
+        min-height: 0;
       }
       .card {
         background: var(--panel);
         border-radius: 12px;
-        padding: 16px;
+        padding: 14px;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+      .card-body {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        padding-right: 2px;
       }
       label {
         display: block;
-        margin: 8px 0 4px 0;
+        margin: 6px 0 4px 0;
         font-size: 12px;
         color: var(--muted);
       }
       textarea,
       input {
         width: 100%;
-        padding: 8px;
+        padding: 6px 8px;
         border-radius: 8px;
         border: 1px solid #1f2937;
         background: #0b1220;
         color: var(--text);
-        font-size: 13px;
+        font-size: 12px;
         font-family: "IBM Plex Mono", ui-monospace, monospace;
       }
       button {
-        margin-top: 10px;
-        padding: 8px 12px;
+        margin-top: 8px;
+        padding: 6px 10px;
         border-radius: 8px;
         border: none;
         background: var(--accent);
         color: #0b1220;
         font-weight: 700;
+        font-size: 12px;
         cursor: pointer;
       }
+      .button-secondary {
+        background: #1f2937;
+        color: var(--text);
+        border: 1px solid #374151;
+      }
+      #toggleThreads {
+        margin-top: 0;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: wait;
+      }
       .output {
-        margin-top: 8px;
-        padding: 8px;
+        margin-top: 6px;
+        padding: 6px;
         background: #0b1220;
         border-radius: 8px;
-        font-size: 13px;
-        min-height: 24px;
+        font-size: 12px;
+        min-height: 20px;
         white-space: pre-wrap;
+      }
+      .slider-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 48px;
+        gap: 8px;
+        align-items: center;
+      }
+      .slider-value {
+        font-size: 12px;
+        color: var(--muted);
+        text-align: right;
+      }
+      .best-guess-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 140px;
+        gap: 8px;
+        align-items: center;
+        margin-top: 6px;
+      }
+      .best-guess-row .output {
+        margin-top: 0;
+      }
+      #entropySpark {
+        height: 36px;
+        width: 140px;
+        background: #0b1220;
+        border-radius: 8px;
+        border: 1px solid #1f2937;
+        display: block;
+      }
+      dialog.modal {
+        border: 1px solid #1f2937;
+        border-radius: 16px;
+        background: #0b1220;
+        color: var(--text);
+        padding: 20px;
+        max-width: 720px;
+        width: min(90vw, 720px);
+      }
+      dialog.modal::backdrop {
+        background: rgba(3, 7, 18, 0.7);
+      }
+      .modal h3 {
+        margin: 0 0 8px 0;
+        font-size: 18px;
+      }
+      .modal p {
+        margin: 0 0 10px 0;
+      }
+      .math-block {
+        margin: 8px 0 12px 0;
+        font-size: 14px;
+      }
+      .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 16px;
       }
       .entropy-bars {
         display: grid;
@@ -122,7 +265,7 @@
         background: var(--accent-3);
       }
       details {
-        margin-top: 10px;
+        margin-top: 8px;
         padding: 6px 10px;
         border-radius: 10px;
         border: 1px solid #1f2937;
@@ -141,7 +284,7 @@
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
-        margin-top: 8px;
+        margin-top: 6px;
         align-items: center;
       }
       .pill {
@@ -156,50 +299,104 @@
         color: var(--muted);
       }
       .log {
-        max-height: 220px;
         overflow: auto;
         font-family: "IBM Plex Mono", ui-monospace, monospace;
+        min-height: 0;
+      }
+      .conn-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 320px;
+        gap: 12px;
+        align-items: start;
+      }
+      .conn-panel {
+        min-width: 0;
+      }
+      .conn-plot {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        justify-self: end;
+        align-self: start;
       }
       #connChart {
-        height: 120px;
+        height: 200px;
+        width: 300px;
+        max-width: 100%;
         background: #0b1220;
         border-radius: 10px;
         border: 1px solid #1f2937;
+        display: block;
       }
-      @media (min-width: 1100px) {
+      @media (max-width: 1200px) {
         .grid {
-          grid-template-columns: repeat(3, minmax(260px, 1fr));
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .conn-layout {
+          grid-template-columns: minmax(0, 1fr);
         }
       }
-      @media (max-width: 720px) {
-        body {
-          padding: 16px;
+      @media (max-width: 900px) {
+        .grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .best-guess-row {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        #entropySpark {
+          width: 100%;
         }
       }
     </style>
   </head>
   <body>
-    <h1>Aletheia WASM Demo</h1>
-    <p>Wordle + Connections helpers running in your browser.</p>
-    <div class="status" id="status">Loading WASM...</div>
+    <header class="page-header">
+      <div class="page-meta">
+        <h1>Aletheia WASM Demo</h1>
+        <p>Wordle + Connections helpers running in your browser.</p>
+      </div>
+      <div class="status-row">
+        <div class="status" id="status">Loading WASM...</div>
+        <div class="status-pill off" id="coiStatus">COI: off</div>
+        <div class="status-pill off" id="threadStatus">Threads: 0/4</div>
+        <div class="thread-meter" id="threadMeter"></div>
+        <button class="button-secondary" id="techOpen" type="button">
+          Technical Deep Dive
+        </button>
+        <button class="button-secondary" id="resetSw" type="button">
+          Reset SW
+        </button>
+        <button class="button-secondary" id="toggleThreads" type="button">
+          Enable Multi-core WASM
+        </button>
+      </div>
+    </header>
 
     <div class="grid">
       <div class="card">
         <h2>Wordle</h2>
+        <div class="card-body">
         <div class="controls">
           <label class="pill">
             <input type="checkbox" id="wordleHard" />
             Hard Mode
           </label>
+          <label class="pill">
+            <input type="checkbox" id="simdToggle" checked />
+            SIMD (Highway)
+          </label>
         </div>
         <label for="dict">Dictionary (one word per line)</label>
-        <textarea id="dict" rows="4"></textarea>
+        <textarea id="dict" rows="3"></textarea>
         <button id="loadDict">Load Dictionary</button>
         <button id="resetWordle">Reset Session</button>
         <div class="output" id="dictStatus">Not loaded.</div>
 
         <button id="bestGuessBtn">Best Guess</button>
-        <div class="output" id="bestGuessOut"></div>
+        <div class="best-guess-row">
+          <div class="output" id="bestGuessOut"></div>
+          <canvas id="entropySpark"></canvas>
+        </div>
         <div class="entropy-bars" id="entropyBars"></div>
 
         <details>
@@ -216,8 +413,11 @@
           <button id="applyPatternBtn">Apply Feedback</button>
 
           <label for="speedCount">Speed test games</label>
-          <input id="speedCount" type="number" min="1" max="500" value="50" />
+          <input id="speedCount" type="number" min="1" max="500" value="100" />
           <button id="speedTestBtn">Run Speed Test</button>
+          <button id="speedTest100Btn" class="button-secondary" type="button">
+            Speed Test x100
+          </button>
           <div class="output" id="speedOut"></div>
 
           <label for="stressCount">Adversarial games</label>
@@ -225,32 +425,79 @@
           <button id="stressTestBtn">Run Stress Test</button>
           <div class="output" id="stressOut"></div>
         </details>
+        </div>
       </div>
 
       <div class="card">
         <h2>Connections</h2>
-        <div class="controls">
-          <label class="pill">
-            <input type="checkbox" id="connectionsHard" />
-            Hard Mode (Lexical Boost)
-          </label>
+        <div class="card-body">
+        <div class="conn-layout">
+          <div class="conn-panel">
+            <div class="controls">
+              <label class="pill">
+                <input type="checkbox" id="connectionsHard" />
+                Hard Mode (Lexical Boost)
+              </label>
+            </div>
+            <label for="lexicalWeight">Lexical weight</label>
+            <div class="slider-row">
+              <input
+                id="lexicalWeight"
+                type="range"
+                min="0"
+                max="0.8"
+                step="0.05"
+                value="0.25"
+              />
+              <div class="slider-value" id="lexicalValue">0.25</div>
+            </div>
+            <label for="connWords">16 words (space or line separated)</label>
+            <textarea id="connWords" rows="4"></textarea>
+            <button id="solveConn">Solve Groups</button>
+            <div class="output" id="connOut"></div>
+          </div>
+          <div class="conn-plot">
+            <label>Vector Space (PCA)</label>
+            <canvas id="connChart"></canvas>
+            <div class="output" id="connMeta"></div>
+          </div>
         </div>
-        <label for="connWords">16 words (space or line separated)</label>
-        <textarea id="connWords" rows="6"></textarea>
-        <button id="solveConn">Solve Groups</button>
-        <div class="output" id="connOut"></div>
-        <label>Vector Space (PCA)</label>
-        <canvas id="connChart" height="120"></canvas>
-        <div class="output" id="connMeta"></div>
+        </div>
       </div>
 
       <div class="card">
         <h2>Solver Log</h2>
-        <div class="output log" id="log"></div>
+        <div class="card-body">
+          <div class="output log" id="log"></div>
+        </div>
       </div>
     </div>
 
-    <script src="./vendor/chart.umd.min.js"></script>
+    <dialog class="modal" id="techModal">
+      <h3>Technical Deep Dive</h3>
+      <p>
+        Shannon entropy quantifies expected information gain for Wordle guesses:
+      </p>
+      <div class="math-block">
+        \[H(X) = -\sum_{i=1}^{243} p_i \log_2 p_i\]
+      </div>
+      <p>
+        The adversarial solver uses a minimax strategy to reduce worst-case
+        uncertainty across possible targets.
+      </p>
+      <p>
+        The engine uses a fixed-block memory pool to keep hot loops
+        zero-allocation and avoid GC or allocator churn during solves.
+      </p>
+      <div class="modal-actions">
+        <button class="button-secondary" id="techClose" type="button">
+          Close
+        </button>
+      </div>
+    </dialog>
+
+    <script defer src="./vendor/katex.min.js"></script>
+    <script defer src="./vendor/auto-render.min.js"></script>
     <script type="module" src="./app.js"></script>
   </body>
 </html>

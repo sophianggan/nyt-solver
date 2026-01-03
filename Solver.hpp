@@ -146,6 +146,9 @@ class WordleSolver {
       const std::vector<size_t>& targets) const;
 };
 
+void SetSimdEnabled(bool enabled);
+bool SimdEnabled();
+
 class EmbeddingStore {
  public:
   bool LoadWord2VecBinary(const std::string& path,

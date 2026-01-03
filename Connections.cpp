@@ -5,6 +5,9 @@
 #include <cmath>
 #include <fstream>
 #include <sstream>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 namespace aletheia {
 namespace {
@@ -189,18 +192,27 @@ bool EmbeddingStore::GetVector(const std::string& word,
 
 void SimilarityEngine::BuildMatrix(
     const std::vector<Eigen::VectorXd>& embeddings) {
+  constexpr double kCosineEps = 1e-12;
   const int n = static_cast<int>(embeddings.size());
   similarity_.resize(n, n);
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
   for (int i = 0; i < n; ++i) {
     const double norm_i = embeddings[i].norm();
     for (int j = 0; j < n; ++j) {
       const double norm_j = embeddings[j].norm();
       if (norm_i == 0.0 || norm_j == 0.0) {
         similarity_(i, j) = 0.0;
-      } else {
-        similarity_(i, j) =
-            embeddings[i].dot(embeddings[j]) / (norm_i * norm_j);
+        continue;
       }
+      const double denom = std::max(norm_i * norm_j, kCosineEps);
+      double cosine = embeddings[i].dot(embeddings[j]) / denom;
+      if (!std::isfinite(cosine)) {
+        cosine = 0.0;
+      }
+      cosine = std::max(-1.0, std::min(1.0, cosine));
+      similarity_(i, j) = 0.5 * (cosine + 1.0);
     }
   }
 }
@@ -213,19 +225,29 @@ void SimilarityEngine::BuildMatrixHybrid(
     BuildMatrix(embeddings);
     return;
   }
+  constexpr double kCosineEps = 1e-12;
   double weight = std::max(0.0, std::min(1.0, lexical_weight));
   const int n = static_cast<int>(embeddings.size());
   similarity_.resize(n, n);
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
   for (int i = 0; i < n; ++i) {
     const double norm_i = embeddings[i].norm();
     for (int j = 0; j < n; ++j) {
       const double norm_j = embeddings[j].norm();
       double cosine = 0.0;
       if (norm_i != 0.0 && norm_j != 0.0) {
-        cosine = embeddings[i].dot(embeddings[j]) / (norm_i * norm_j);
+        const double denom = std::max(norm_i * norm_j, kCosineEps);
+        cosine = embeddings[i].dot(embeddings[j]) / denom;
       }
+      if (!std::isfinite(cosine)) {
+        cosine = 0.0;
+      }
+      cosine = std::max(-1.0, std::min(1.0, cosine));
+      const double semantic = 0.5 * (cosine + 1.0);
       double lexical = LexicalSimilarity(words[i], words[j]);
-      similarity_(i, j) = (1.0 - weight) * cosine + weight * lexical;
+      similarity_(i, j) = (1.0 - weight) * semantic + weight * lexical;
     }
   }
 }

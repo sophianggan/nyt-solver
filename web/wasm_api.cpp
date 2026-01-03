@@ -7,6 +7,7 @@
 #include <cmath>
 #include <limits>
 #include <numeric>
+#include <random>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -104,6 +105,8 @@ double EntropyForGuessIndex(size_t guess_index,
 
 struct PcaResult {
   Eigen::MatrixXd projected;
+  std::array<double, 2> variance_ratio{{0.0, 0.0}};
+  bool has_variance = false;
 };
 
 PcaResult ComputePcaProjection(const std::vector<Eigen::VectorXd>& embeddings,
@@ -123,6 +126,9 @@ PcaResult ComputePcaProjection(const std::vector<Eigen::VectorXd>& embeddings,
   }
 
   Eigen::MatrixXd X(n, feature_dims);
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
   for (int i = 0; i < n; ++i) {
     X.row(i) = embeddings[i].transpose();
   }
@@ -134,16 +140,31 @@ PcaResult ComputePcaProjection(const std::vector<Eigen::VectorXd>& embeddings,
 
   Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> solver(cov);
   if (solver.info() != Eigen::Success) {
+    result.projected = centered.leftCols(k);
     return result;
   }
 
   Eigen::VectorXd evals = solver.eigenvalues();
   Eigen::MatrixXd evecs = solver.eigenvectors();
+  for (int i = 0; i < evals.size(); ++i) {
+    if (!std::isfinite(evals[i]) || evals[i] < 0.0) {
+      evals[i] = 0.0;
+    }
+  }
   std::vector<int> indices(feature_dims);
   std::iota(indices.begin(), indices.end(), 0);
   std::sort(indices.begin(), indices.end(), [&](int a, int b) {
     return evals[a] > evals[b];
   });
+
+  const double eval_sum = evals.sum();
+  if (eval_sum > 0.0 && !indices.empty()) {
+    result.has_variance = true;
+    result.variance_ratio[0] = evals[indices[0]] / eval_sum;
+    if (indices.size() > 1) {
+      result.variance_ratio[1] = evals[indices[1]] / eval_sum;
+    }
+  }
 
   Eigen::MatrixXd components(feature_dims, k);
   for (int i = 0; i < k; ++i) {
@@ -385,15 +406,150 @@ std::string WordlePattern(const std::string& guess, const std::string& target) {
   return aletheia::WordleSolver::PatternString(pattern);
 }
 
+std::string WordlePatternHistogram(const std::string& guess) {
+  if (!g_loaded) {
+    return "{\"error\":\"Dictionary not loaded\"}";
+  }
+  std::string g = aletheia::WordleSolver::NormalizeWord(guess);
+  if (!aletheia::WordleSolver::IsValidWord(g)) {
+    return "{\"error\":\"Invalid guess\"}";
+  }
+  auto g_pack = aletheia::WordleSolver::EncodeWord(g);
+  std::vector<size_t> all_indices(g_wordle.words().size());
+  std::iota(all_indices.begin(), all_indices.end(), 0);
+  const std::vector<size_t>& targets =
+      g_remaining.empty() ? all_indices : g_remaining;
+  std::array<int, kPatternCount> counts{};
+  counts.fill(0);
+  const auto& words = g_wordle.words();
+  for (size_t target_index : targets) {
+    const aletheia::PackedWord& target = words[target_index].packed;
+    int pattern = aletheia::WordleSolver::Pattern(g_pack, target);
+    counts[pattern]++;
+  }
+  std::ostringstream out;
+  out << "{\"total\":" << targets.size() << ",\"counts\":[";
+  for (int i = 0; i < kPatternCount; ++i) {
+    if (i > 0) {
+      out << ",";
+    }
+    out << counts[i];
+  }
+  out << "]}";
+  return out.str();
+}
+
+std::string WordleSpeedTest(int count, bool hard_mode) {
+  if (!g_loaded) {
+    return "{\"error\":\"Dictionary not loaded\"}";
+  }
+  if (count < 1) {
+    count = 1;
+  } else if (count > 500) {
+    count = 500;
+  }
+  const auto& words = g_wordle.words();
+  if (words.empty()) {
+    return "{\"error\":\"Dictionary empty\"}";
+  }
+  std::vector<size_t> all_indices(words.size());
+  std::iota(all_indices.begin(), all_indices.end(), 0);
+
+  std::mt19937 rng(static_cast<unsigned>(
+      std::chrono::high_resolution_clock::now().time_since_epoch().count()));
+  std::uniform_int_distribution<size_t> dist(0, words.size() - 1);
+
+  std::vector<double> latencies;
+  latencies.reserve(count);
+  int wins = 0;
+  int total_guesses = 0;
+  for (int game = 0; game < count; ++game) {
+    const size_t target_index = dist(rng);
+    const aletheia::PackedWord target = words[target_index].packed;
+    std::vector<size_t> remaining = all_indices;
+    bool solved = false;
+    int guesses = 0;
+    auto start = std::chrono::high_resolution_clock::now();
+    for (int step = 0; step < 6; ++step) {
+      const std::vector<size_t>& candidates =
+          hard_mode ? remaining : all_indices;
+      double entropy = 0.0;
+      std::string guess = g_wordle.BestGuess(candidates, remaining, &entropy);
+      if (guess.empty()) {
+        break;
+      }
+      auto guess_packed = aletheia::WordleSolver::EncodeWord(guess);
+      int pattern =
+          aletheia::WordleSolver::Pattern(guess_packed, target);
+      std::string pattern_str =
+          aletheia::WordleSolver::PatternString(pattern);
+      guesses++;
+      if (pattern_str == "22222") {
+        solved = true;
+        break;
+      }
+      std::vector<size_t> next;
+      next.reserve(remaining.size());
+      aletheia::WordleSolver::FilterCandidates(
+          words, remaining, guess, pattern_str, &next);
+      remaining.swap(next);
+    }
+    auto end = std::chrono::high_resolution_clock::now();
+    double elapsed_ms =
+        std::chrono::duration<double, std::milli>(end - start).count();
+    latencies.push_back(elapsed_ms);
+    total_guesses += std::max(guesses, 1);
+    if (solved) {
+      wins++;
+    }
+  }
+
+  std::sort(latencies.begin(), latencies.end());
+  auto percentile = [&](double pct) {
+    if (latencies.empty()) {
+      return 0.0;
+    }
+    size_t idx = static_cast<size_t>(
+        std::floor((pct / 100.0) * (latencies.size() - 1)));
+    return latencies[std::min(idx, latencies.size() - 1)];
+  };
+  const double p99 = percentile(99.0);
+  const double win_rate =
+      static_cast<double>(wins) / static_cast<double>(count) * 100.0;
+  const double avg_guesses =
+      static_cast<double>(total_guesses) / static_cast<double>(count);
+
+  std::ostringstream out;
+  out << "{\"count\":" << count << ",\"win_rate\":" << win_rate
+      << ",\"avg_guesses\":" << avg_guesses << ",\"p99_ms\":" << p99 << "}";
+  return out.str();
+}
+
 std::string ConnectionsSolveDetailed(const std::string& words_text,
                                      bool hard_mode);
+std::string ConnectionsSolveWeightedDetailed(const std::string& words_text,
+                                             bool hard_mode,
+                                             double lexical_weight);
 
 std::string ConnectionsSolve(const std::string& words_text) {
-  return ConnectionsSolveDetailed(words_text, false);
+  return ConnectionsSolveWeightedDetailed(words_text, false, 0.0);
 }
 
 std::string ConnectionsSolveDetailed(const std::string& words_text,
                                      bool hard_mode) {
+  const double default_weight = hard_mode ? 0.25 : 0.0;
+  return ConnectionsSolveWeightedDetailed(words_text, hard_mode, default_weight);
+}
+
+std::string ConnectionsSolveWeighted(const std::string& words_text,
+                                     bool hard_mode,
+                                     double lexical_weight) {
+  return ConnectionsSolveWeightedDetailed(words_text, hard_mode, lexical_weight);
+}
+
+std::string ConnectionsSolveWeightedDetailed(const std::string& words_text,
+                                             bool hard_mode,
+                                             double lexical_weight) {
   std::vector<std::string> words = SplitWordsText(words_text);
   if (words.size() != 16) {
     return "{\"error\":\"Expected 16 words\"}";
@@ -401,13 +557,17 @@ std::string ConnectionsSolveDetailed(const std::string& words_text,
 
   std::vector<Eigen::VectorXd> vectors;
   vectors.reserve(words.size());
-  const int dims = 64;
+  const int dims = 24;
   for (const auto& word : words) {
     vectors.push_back(FallbackEmbedding(word, dims));
   }
 
   aletheia::SimilarityEngine similarity;
-  double lexical_weight = hard_mode ? 0.25 : 0.0;
+  if (lexical_weight < 0.0) {
+    lexical_weight = 0.0;
+  } else if (lexical_weight > 1.0) {
+    lexical_weight = 1.0;
+  }
   bool lexical_boosted = false;
   auto build_matrix = [&](double weight) {
     if (weight > 0.0) {
@@ -459,11 +619,17 @@ std::string ConnectionsSolveDetailed(const std::string& words_text,
       return 0.0;
     }
     Eigen::VectorXd evals = solver.eigenvalues();
+    if (!evals.allFinite()) {
+      return 0.0;
+    }
     double sum = evals.sum();
-    if (sum <= 0.0) {
+    if (!std::isfinite(sum) || sum <= 0.0) {
       return 0.0;
     }
     double max_eval = evals.maxCoeff();
+    if (!std::isfinite(max_eval) || max_eval <= 0.0) {
+      return 0.0;
+    }
     return max_eval / sum;
   };
 
@@ -536,6 +702,11 @@ std::string ConnectionsSolveDetailed(const std::string& words_text,
     out << group_confidence[i];
   }
   out << "],\"lexical_boosted\":" << (lexical_boosted ? "true" : "false");
+  out << ",\"lexical_weight\":" << lexical_weight;
+  if (pca.has_variance) {
+    out << ",\"variance\":[" << pca.variance_ratio[0] << ","
+        << pca.variance_ratio[1] << "]";
+  }
   out << ",\"points\":[";
 
   std::vector<Eigen::Vector2d> centroids(group_indices.size(),
@@ -613,6 +784,11 @@ EMSCRIPTEN_BINDINGS(aletheia_wasm) {
   emscripten::function("wordleTopGuesses", &WordleTopGuesses);
   emscripten::function("wordleAdversarialStress", &WordleAdversarialStress);
   emscripten::function("wordlePattern", &WordlePattern);
+  emscripten::function("wordlePatternHistogram", &WordlePatternHistogram);
+  emscripten::function("wordleSpeedTest", &WordleSpeedTest);
+  emscripten::function("wordleSetSimdEnabled", &aletheia::SetSimdEnabled);
+  emscripten::function("wordleSimdEnabled", &aletheia::SimdEnabled);
   emscripten::function("connectionsSolve", &ConnectionsSolve);
   emscripten::function("connectionsSolveDetailed", &ConnectionsSolveDetailed);
+  emscripten::function("connectionsSolveWeighted", &ConnectionsSolveWeighted);
 }

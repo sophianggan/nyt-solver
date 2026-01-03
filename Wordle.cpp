@@ -21,6 +21,7 @@ constexpr int kAlphabet = 26;
 constexpr int kLetterBits = 5;
 constexpr uint32_t kLetterMask = 0x1F;
 constexpr int kSolvedPattern = 242;
+bool g_simd_enabled = true;
 
 uint8_t LetterAt(const PackedWord& word, int index) {
   return static_cast<uint8_t>((word.letters >> (index * kLetterBits)) &
@@ -28,6 +29,10 @@ uint8_t LetterAt(const PackedWord& word, int index) {
 }
 
 }  // namespace
+
+void SetSimdEnabled(bool enabled) { g_simd_enabled = enabled; }
+
+bool SimdEnabled() { return g_simd_enabled; }
 
 bool WordleSolver::LoadDictionary(const std::string& path) {
   std::ifstream infile(path);
@@ -261,7 +266,7 @@ void WordleSolver::FilterCandidates(const std::vector<WordEntry>& words,
   }
 
 #if defined(ALETHEIA_USE_HWY)
-  if (green_mask != 0) {
+  if (green_mask != 0 && SimdEnabled()) {
     namespace hn = hwy::HWY_NAMESPACE;
 
     const PackedWord guess_packed = EncodeWord(guess);

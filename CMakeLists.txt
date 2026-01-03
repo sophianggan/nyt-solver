@@ -71,6 +71,11 @@ elseif(MSVC)
   target_compile_options(aletheia PRIVATE /O2)
 endif()
 
+if(EMSCRIPTEN)
+  target_compile_options(aletheia PRIVATE -msimd128 -flto)
+  target_link_options(aletheia PRIVATE -flto)
+endif()
+
 add_executable(wordle_tests tests/wordle_tests.cpp Wordle.cpp)
 target_include_directories(wordle_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(wordle_tests PRIVATE Eigen3::Eigen GTest::gtest_main)
